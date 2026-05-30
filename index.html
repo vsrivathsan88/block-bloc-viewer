@@ -115,6 +115,11 @@
       // Per image-blaster's SplatRenderer.tsx — rotation is `Math.PI` (180°)
       // around the X axis when flipY is true. Position is the groundPlaneOffset
       // on Y. Scale is metricScaleFactor (default 1).
+      // NOTE: localBbox is declared further below with `let`. We use `var` here
+      // so the temporal-dead-zone doesn't bite when applyTransform() runs at
+      // load time (before the `let` line) — accessing a `let` before its
+      // declaration throws ReferenceError and aborts the whole script.
+      var localBbox = null;
       const splatGroup = new THREE.Group();
       const applyTransform = () => {
         splatGroup.rotation.set(flipY ? Math.PI : 0, flipZ ? Math.PI : 0, 0);
@@ -148,7 +153,7 @@
       let smoothYaw = 0, smoothPitch = 0;
       let spawnPos = new THREE.Vector3(0, 1.6, 3);
       let pointerLocked = false;
-      let localBbox = null;  // cached local-space bbox from splat.getBoundingBox()
+      // localBbox already declared with `var` above to avoid TDZ at script load
       // Expose for debugging via window.DEBUG
       window.__keys = keys;
       window.__lookState = () => ({ rawYaw, rawPitch, smoothYaw, smoothPitch, pointerLocked });
