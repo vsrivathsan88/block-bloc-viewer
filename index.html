@@ -80,7 +80,10 @@
       import * as THREE from "three";
       import { OrbitControls } from "three/addons/controls/OrbitControls.js";
       import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-      import { SparkRenderer, SplatMesh } from "https://esm.sh/@sparkjsdev/spark@2.1.0?deps=three@0.180.0";
+      import * as Spark from "https://esm.sh/@sparkjsdev/spark@2.1.0?deps=three@0.180.0";
+      const { SparkRenderer, SplatMesh } = Spark;
+      console.log("[block-bloc] Spark exports:", Object.keys(Spark));
+      console.log("[block-bloc] THREE rev:", THREE.REVISION);
 
       const params = new URLSearchParams(window.location.search);
       const DEFAULT_SPZ = "https://cdn.marble.worldlabs.ai/bd1c3e7a-e412-4950-bb82-045f95f047a5/0dea05c6-6b15-4d51-bc0d-5f46b5e3df5a_ceramic_500k.spz";
@@ -139,8 +142,19 @@
       };
       scene.add(splatGroup);
 
+      console.log("[block-bloc] creating SplatMesh url=", spzUrl);
       const splat = new SplatMesh({ url: spzUrl });
+      console.log("[block-bloc] splat created. proto keys:", Object.getOwnPropertyNames(Object.getPrototypeOf(splat)));
       splatGroup.add(splat);
+      window.DEBUG = { THREE, Spark, scene, camera, splat, splatGroup, spark, renderer };
+      console.log("[block-bloc] window.DEBUG ready");
+      // Spark common load promise / event patterns — try them all, log what fires
+      ["load", "ready", "loaded", "error"].forEach((evt) => {
+        try { splat.addEventListener?.(evt, (e) => console.log("[block-bloc] splat event:", evt, e)); } catch {}
+      });
+      if (splat.whenReady?.then) splat.whenReady.then(() => console.log("[block-bloc] splat.whenReady resolved"));
+      if (splat.loaded?.then)    splat.loaded.then(()    => console.log("[block-bloc] splat.loaded resolved"));
+      if (splat.ready?.then)     splat.ready.then(()     => console.log("[block-bloc] splat.ready resolved"));
 
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
@@ -231,39 +245,71 @@
       }
       renderer.setAnimationLoop(tick);
 
-      // --- Camera presets (no bbox dependency) ---
-      // Spark's SplatMesh doesn't expose standard Three.js geometry, so
-      // Box3.setFromObject returns empty. We use fixed presets that work for
-      // typical Marble interior worlds (Y-up, floor near y=0, walls within ~5m).
-      // User can fine-tune via y_offset/scale and the GO INSIDE / OUTSIDE buttons.
+      // --- Auto-fit using Spark's actual bbox method ---
+      // Spark's SplatMesh exposes a real getBoundingBox() method that returns
+      // the splat data's actual extent. (Three.js's Box3.setFromObject returns
+      // empty because SplatMesh doesn't use BufferGeometry.) We poll for it
+      // because asyncInitialize hasn't necessarily completed at construction.
       let currentMode = "inside";
-      const INSIDE = {
-        pos:    new THREE.Vector3(0, 1.5, 0),
-        target: new THREE.Vector3(0, 1.5, -3),
-      };
-      const OUTSIDE = {
-        pos:    new THREE.Vector3(6, 4, 6),
-        target: new THREE.Vector3(0, 1, 0),
-      };
-      function setView(mode) {
-        const preset = mode === "inside" ? INSIDE : OUTSIDE;
-        camera.position.copy(preset.pos);
-        controls.target.copy(preset.target);
+      let lastBbox = null;
+
+      function fitCamera(box, mode) {
+        const size   = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const diag   = size.length();
+
+        if (mode === "inside") {
+          // Camera at the room's CENTER on the XZ plane, raised to eye height
+          // measured from the floor (bbox.min.y). Look forward along the
+          // longer of the X/Z axes so we see across the room.
+          const eyeY = box.min.y + 1.6;
+          camera.position.set(center.x, eyeY, center.z);
+          const forward = size.z >= size.x
+            ? new THREE.Vector3(0, 0, size.z * 0.4)
+            : new THREE.Vector3(size.x * 0.4, 0, 0);
+          controls.target.copy(new THREE.Vector3(center.x, eyeY - 0.1, center.z).add(forward));
+        } else {
+          // OUTSIDE: pull back to ~1.4× diagonal, look at center.
+          const d = diag * 1.4;
+          camera.position.set(center.x + d * 0.5, center.y + d * 0.4, center.z + d * 0.8);
+          controls.target.copy(center);
+        }
+        camera.near = Math.max(0.001, diag * 0.0005);
+        camera.far  = diag * 50;
+        camera.updateProjectionMatrix();
         controls.update();
         currentMode = mode;
         goInside.style.display  = mode === "outside" ? "" : "none";
         resetView.style.display = mode === "inside" ? "" : "none";
+        bboxInfo.textContent = `bbox: ${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)} m\ncenter: (${center.x.toFixed(2)}, ${center.y.toFixed(2)}, ${center.z.toFixed(2)})`;
       }
 
-      // Show the walk hint + buttons immediately — don't gate on auto-fit
-      walkHint.style.display = "";
-      goInside.style.display = "none";    // already inside by default
-      resetView.style.display = "";
-      setTimeout(() => {
-        if (status.textContent.startsWith("Loading")) {
-          status.innerHTML = `Spark loaded · <a href="${spzUrl}" target="_blank">.spz</a>`;
+      function setView(mode) {
+        if (lastBbox) fitCamera(lastBbox, mode);
+      }
+
+      // Poll Spark's getBoundingBox until it returns non-zero bounds.
+      let attempts = 0;
+      const fitInterval = setInterval(() => {
+        attempts++;
+        try {
+          const box = splat.getBoundingBox();
+          const size = box.getSize(new THREE.Vector3());
+          if (size.length() > 0.1 && isFinite(size.x)) {
+            lastBbox = box;
+            fitCamera(box, "inside");
+            status.innerHTML = `Inside the room · <a href="${spzUrl}" target="_blank">.spz</a>`;
+            walkHint.style.display = "";
+            clearInterval(fitInterval);
+            console.log("[block-bloc] auto-fit complete, bbox center=", box.getCenter(new THREE.Vector3()).toArray());
+          }
+        } catch (e) { /* keep polling */ }
+        if (attempts > 60) {  // 30s give-up
+          clearInterval(fitInterval);
+          status.textContent = "Couldn't compute splat bounds — using fallback camera";
+          walkHint.style.display = "";
         }
-      }, 3000);
+      }, 500);
 
       window.addEventListener("resize", () => {
         camera.aspect = window.innerWidth / window.innerHeight;
