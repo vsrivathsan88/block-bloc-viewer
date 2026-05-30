@@ -120,6 +120,11 @@
         splatGroup.rotation.set(flipY ? Math.PI : 0, flipZ ? Math.PI : 0, 0);
         splatGroup.position.set(0, yOffset, 0);
         splatGroup.scale.setScalar(scaleVal);
+        splatGroup.updateMatrixWorld(true);
+        // If we already have a cached local bbox, recompute spawn in the new
+        // world frame (toggling flip_y/flip_z without this leaves the camera
+        // outside the splats).
+        if (localBbox) setSpawnFromBbox(localBbox);
       };
       applyTransform();
       scene.add(splatGroup);
@@ -143,6 +148,7 @@
       let smoothYaw = 0, smoothPitch = 0;
       let spawnPos = new THREE.Vector3(0, 1.6, 3);
       let pointerLocked = false;
+      let localBbox = null;  // cached local-space bbox from splat.getBoundingBox()
       // Expose for debugging via window.DEBUG
       window.__keys = keys;
       window.__lookState = () => ({ rawYaw, rawPitch, smoothYaw, smoothPitch, pointerLocked });
@@ -153,25 +159,33 @@
       const _move = new THREE.Vector3();
       const _euler = new THREE.Euler(0, 0, 0, "YXZ");
 
-      function setSpawnFromBbox(box) {
-        const center = box.getCenter(new THREE.Vector3());
-        const eyeY = box.min.y + 1.6;
+      // localBox is in splat-local space, BEFORE the splatGroup transform.
+      // We must transform it through splatGroup.matrixWorld to get the WORLD
+      // bbox where the camera actually needs to be placed. Without this, the
+      // flip_y rotation (Math.PI around X) leaves the camera outside the
+      // splat geometry along Y and Z.
+      function setSpawnFromBbox(localBox) {
+        localBbox = localBox.clone();
+        splatGroup.updateMatrixWorld(true);
+        const worldBox = localBox.clone().applyMatrix4(splatGroup.matrixWorld);
+        const center = worldBox.getCenter(new THREE.Vector3());
+        const size = worldBox.getSize(new THREE.Vector3());
+        const eyeY = worldBox.min.y + 1.6;
         spawnPos.set(center.x, eyeY, center.z);
         camera.position.copy(spawnPos);
-        // Look along the longer horizontal axis
-        const size = box.getSize(new THREE.Vector3());
         if (size.z >= size.x) {
-          rawYaw = 0;  // looking -Z (default)
+          rawYaw = 0;             // facing -Z
         } else {
-          rawYaw = -Math.PI / 2;  // looking -X
+          rawYaw = -Math.PI / 2;  // facing -X
         }
         rawPitch = 0;
         smoothYaw = rawYaw;
         smoothPitch = rawPitch;
         camera.quaternion.setFromEuler(_euler.set(0, rawYaw, 0));
         bboxInfo.innerHTML =
-          `bbox: ${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)} m<br>` +
-          `spawn: (${spawnPos.x.toFixed(2)}, ${spawnPos.y.toFixed(2)}, ${spawnPos.z.toFixed(2)})`;
+          `world bbox: ${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)} m<br>` +
+          `center: (${center.x.toFixed(2)}, ${center.y.toFixed(2)}, ${center.z.toFixed(2)})<br>` +
+          `spawn:  (${spawnPos.x.toFixed(2)}, ${spawnPos.y.toFixed(2)}, ${spawnPos.z.toFixed(2)})`;
       }
 
       function resetToSpawn() {
