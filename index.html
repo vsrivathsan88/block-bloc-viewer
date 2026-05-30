@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>block-bloc · viewer</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #050507; color: #eef; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      #info {
+        position: fixed; top: 12px; left: 12px; z-index: 10;
+        background: rgba(0,0,0,.72); padding: 12px 16px; border-radius: 10px;
+        max-width: 320px; backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.08);
+      }
+      #info .label { font-size: 11px; letter-spacing: .15em; text-transform: uppercase; opacity: .55; }
+      #info .title { font-size: 14px; margin: 2px 0 8px 0; }
+      #info .status { font-size: 12px; opacity: .8; }
+      #info a { color: #9cf; }
+      #controls {
+        position: fixed; bottom: 12px; left: 12px; z-index: 10;
+        background: rgba(0,0,0,.72); padding: 10px 14px; border-radius: 10px;
+        font-size: 11px; opacity: .8; backdrop-filter: blur(8px);
+      }
+      #controls kbd { background: rgba(255,255,255,.12); padding: 1px 5px; border-radius: 3px; font-family: ui-monospace, monospace; font-size: 10px; }
+    </style>
+  </head>
+  <body>
+    <div id="info">
+      <div class="label">block-bloc</div>
+      <div class="title" id="title">living-room</div>
+      <div class="status" id="status">Loading splat…</div>
+    </div>
+    <div id="controls">
+      <kbd>drag</kbd> orbit ·
+      <kbd>scroll</kbd> zoom ·
+      <kbd>right-drag</kbd> pan
+    </div>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://esm.sh/three@0.158.0"
+        }
+      }
+    </script>
+    <script type="module">
+      import * as THREE from "three";
+      import * as GaussianSplats3D from "https://esm.sh/@mkkellogg/gaussian-splats-3d@0.4.7?deps=three@0.158.0";
+
+      const params = new URLSearchParams(window.location.search);
+      // Default to the living-room world; override with ?spz=<url>
+      const DEFAULT_SPZ = "https://cdn.marble.worldlabs.ai/cb75da1e-6c89-4568-b58a-1e6f1684a96f/4315b018-a369-48e8-9150-3703cde4bd8f_sand_500k.spz";
+      const spzUrl = params.get("spz") || DEFAULT_SPZ;
+      const titleArg = params.get("title");
+      if (titleArg) document.getElementById("title").textContent = titleArg;
+
+      const status = document.getElementById("status");
+      status.textContent = "Loading splat… (~4 MB)";
+
+      // Format detection from URL
+      let format = GaussianSplats3D.SceneFormat.Splat;
+      if (/\.spz(\?|$)/i.test(spzUrl)) format = GaussianSplats3D.SceneFormat.SPZ;
+      else if (/\.ply(\?|$)/i.test(spzUrl)) format = GaussianSplats3D.SceneFormat.Ply;
+      else if (/\.ksplat(\?|$)/i.test(spzUrl)) format = GaussianSplats3D.SceneFormat.KSplat;
+
+      const viewer = new GaussianSplats3D.Viewer({
+        cameraUp: [0, 0, 1],
+        initialCameraPosition: [3, 3, 1.6],
+        initialCameraLookAt: [0, 0, 1.6],
+        sphericalHarmonicsDegree: 0,
+        sharedMemoryForWorkers: false,
+        useBuiltInControls: true,
+      });
+
+      viewer.addSplatScene(spzUrl, {
+        format,
+        splatAlphaRemovalThreshold: 5,
+        showLoadingUI: false,
+        progressiveLoad: false,
+      })
+        .then(() => {
+          viewer.start();
+          status.innerHTML = 'Loaded · <a href="' + spzUrl + '" target="_blank">.spz</a>';
+        })
+        .catch((err) => {
+          console.error(err);
+          status.textContent = "Failed to load: " + err.message;
+        });
+    </script>
+  </body>
+</html>
