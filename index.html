@@ -175,8 +175,13 @@
         const worldBox = localBox.clone().applyMatrix4(splatGroup.matrixWorld);
         const center = worldBox.getCenter(new THREE.Vector3());
         const size = worldBox.getSize(new THREE.Vector3());
-        const eyeY = worldBox.min.y + 1.6;
-        spawnPos.set(center.x, eyeY, center.z);
+        // Spawn at the exact center of the world bbox. Spark's bbox often
+        // extends past the "real" room (splat halos at edges), so anywhere
+        // inside the bbox is "inside the room." Center is the safest pick.
+        // We pull eye height slightly above center (60% up) so the user
+        // doesn't spawn at floor level when the bbox includes the ceiling.
+        const eyeY = center.y + size.y * 0.1;  // 10% above center, capped to bbox
+        spawnPos.set(center.x, Math.min(eyeY, worldBox.max.y - 0.2), center.z);
         camera.position.copy(spawnPos);
         if (size.z >= size.x) {
           rawYaw = 0;             // facing -Z
@@ -189,8 +194,9 @@
         camera.quaternion.setFromEuler(_euler.set(0, rawYaw, 0));
         bboxInfo.innerHTML =
           `world bbox: ${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)} m<br>` +
-          `center: (${center.x.toFixed(2)}, ${center.y.toFixed(2)}, ${center.z.toFixed(2)})<br>` +
-          `spawn:  (${spawnPos.x.toFixed(2)}, ${spawnPos.y.toFixed(2)}, ${spawnPos.z.toFixed(2)})`;
+          `min: (${worldBox.min.x.toFixed(2)}, ${worldBox.min.y.toFixed(2)}, ${worldBox.min.z.toFixed(2)})<br>` +
+          `max: (${worldBox.max.x.toFixed(2)}, ${worldBox.max.y.toFixed(2)}, ${worldBox.max.z.toFixed(2)})<br>` +
+          `spawn: (${spawnPos.x.toFixed(2)}, ${spawnPos.y.toFixed(2)}, ${spawnPos.z.toFixed(2)})`;
       }
 
       function resetToSpawn() {
