@@ -48,8 +48,17 @@
       <button id="reset-view" style="display:none; background:#444">⤺ outside view</button>
     </div>
     <div id="controls">
-      <kbd>drag</kbd> orbit · <kbd>scroll</kbd> zoom · <kbd>right-drag</kbd> pan
+      <span id="mode-orbit"><kbd>drag</kbd> orbit · <kbd>scroll</kbd> zoom · <kbd>click</kbd> walk</span>
+      <span id="mode-walk" style="display:none">
+        <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · <kbd>⇧</kbd> run · <kbd>Q</kbd>/<kbd>E</kbd> down/up · mouse to look · <kbd>ESC</kbd> exit
+      </span>
     </div>
+    <div id="walk-hint" style="
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      background: rgba(0,0,0,.72); padding: 14px 22px; border-radius: 10px;
+      font-size: 13px; backdrop-filter: blur(8px); pointer-events: none;
+      border: 1px solid rgba(255,255,255,.12); display: none;
+    ">click to walk · WASD · ⇧ to run · ESC to exit</div>
     <div id="adjust">
       <label>flip Y <input type="checkbox" id="flip-y-in" /></label>
       <label>flip Z <input type="checkbox" id="flip-z-in" /></label>
@@ -70,6 +79,7 @@
     <script type="module">
       import * as THREE from "three";
       import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
       import { SparkRenderer, SplatMesh } from "https://esm.sh/@sparkjsdev/spark@2.1.0?deps=three@0.180.0";
 
       const params = new URLSearchParams(window.location.search);
@@ -136,6 +146,87 @@
       controls.maxDistance = 500;
       controls.update();
 
+      // --- WASD walk mode via PointerLockControls ---
+      const fps = new PointerLockControls(camera, renderer.domElement);
+      const walkHint = document.getElementById("walk-hint");
+      const modeOrbit = document.getElementById("mode-orbit");
+      const modeWalk  = document.getElementById("mode-walk");
+
+      const keys = { w:false, a:false, s:false, d:false, q:false, e:false, shift:false };
+      addEventListener("keydown", (ev) => {
+        if (ev.repeat) return;
+        switch (ev.code) {
+          case "KeyW": case "ArrowUp":    keys.w = true; break;
+          case "KeyA": case "ArrowLeft":  keys.a = true; break;
+          case "KeyS": case "ArrowDown":  keys.s = true; break;
+          case "KeyD": case "ArrowRight": keys.d = true; break;
+          case "KeyQ": keys.q = true; break;
+          case "KeyE": keys.e = true; break;
+          case "ShiftLeft": case "ShiftRight": keys.shift = true; break;
+        }
+      });
+      addEventListener("keyup", (ev) => {
+        switch (ev.code) {
+          case "KeyW": case "ArrowUp":    keys.w = false; break;
+          case "KeyA": case "ArrowLeft":  keys.a = false; break;
+          case "KeyS": case "ArrowDown":  keys.s = false; break;
+          case "KeyD": case "ArrowRight": keys.d = false; break;
+          case "KeyQ": keys.q = false; break;
+          case "KeyE": keys.e = false; break;
+          case "ShiftLeft": case "ShiftRight": keys.shift = false; break;
+        }
+      });
+
+      // Click on canvas → enter walk mode (locks pointer)
+      renderer.domElement.addEventListener("click", () => {
+        if (!fps.isLocked) fps.lock();
+      });
+
+      fps.addEventListener("lock", () => {
+        controls.enabled = false;     // disable orbit while walking
+        modeOrbit.style.display = "none";
+        modeWalk.style.display = "";
+        walkHint.style.display = "none";
+      });
+      fps.addEventListener("unlock", () => {
+        controls.enabled = true;
+        controls.target.copy(camera.position.clone().add(new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion)));
+        controls.update();
+        modeOrbit.style.display = "";
+        modeWalk.style.display = "none";
+        walkHint.style.display = "";
+      });
+
+      // Walk-mode movement speeds in m/s (Marble worlds are in metric units).
+      const SPEED_WALK = 1.6;     // ~5.2 ft/s, average walking pace
+      const SPEED_RUN  = 5.0;     // ~16 ft/s, a fast jog
+      const SPEED_UP   = 1.2;     // Q/E vertical drift
+
+      const clock = new THREE.Clock();
+      function tick() {
+        const dt = Math.min(clock.getDelta(), 0.05);  // clamp for tab-switch jumps
+
+        if (fps.isLocked) {
+          const horizSpeed = (keys.shift ? SPEED_RUN : SPEED_WALK) * dt;
+          let mx = 0, mz = 0;
+          if (keys.w) mz += 1;
+          if (keys.s) mz -= 1;
+          if (keys.a) mx -= 1;
+          if (keys.d) mx += 1;
+          // Normalize diagonal so combined keys don't go √2 faster
+          const len = Math.hypot(mx, mz);
+          if (len > 0) { mx = (mx / len) * horizSpeed; mz = (mz / len) * horizSpeed; }
+          fps.moveRight(mx);
+          fps.moveForward(mz);
+          if (keys.q) camera.position.y -= SPEED_UP * dt;
+          if (keys.e) camera.position.y += SPEED_UP * dt;
+        } else {
+          controls.update();
+        }
+        renderer.render(scene, camera);
+      }
+      renderer.setAnimationLoop(tick);
+
       // --- Auto-fit on splat load ---
       let lastBbox = null;
       let currentMode = "outside"; // or "inside"
@@ -189,17 +280,13 @@
           lastBbox = box;
           fitCamera(box, "inside"); // start INSIDE the room — that's the whole point of block-bloc
           status.innerHTML = `Inside the room · <a href="${spzUrl}" target="_blank">.spz</a>`;
+          walkHint.style.display = "";   // surface the WASD hint once geometry loads
           clearInterval(fitInterval);
         } else if (attempts > 40) {  // give up after ~20s
           clearInterval(fitInterval);
           status.textContent = "Splat loaded but couldn't compute bounds — try the flip toggles ↓";
         }
       }, 500);
-
-      renderer.setAnimationLoop(() => {
-        controls.update();
-        renderer.render(scene, camera);
-      });
 
       window.addEventListener("resize", () => {
         camera.aspect = window.innerWidth / window.innerHeight;
