@@ -115,9 +115,14 @@
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x050507);
 
+      // Marble worlds are typically Y-up with the floor near y=0 and walls within
+      // ~3-6m radius around origin. Place the camera AT the origin at eye height,
+      // looking forward along -Z (Three.js default forward). This gives a sane
+      // "inside the room" starting view without any bbox computation — which is
+      // unreliable for Spark's SplatMesh since it doesn't expose Three.js geometry.
       const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 500);
-      camera.position.set(0, 0, 3);     // placeholder; will be reset after auto-fit
-      camera.lookAt(0, 0, 0);
+      camera.position.set(0, 1.5, 0);
+      camera.lookAt(0, 1.5, -3);
 
       const spark = new SparkRenderer({ renderer });
       scene.add(spark);
@@ -131,8 +136,6 @@
         );
         splatGroup.position.set(0, yOffset, 0);
         splatGroup.scale.setScalar(scaleVal);
-        // Refit camera after a transform change
-        if (lastBbox) fitCamera(lastBbox, currentMode);
       };
       scene.add(splatGroup);
 
@@ -144,6 +147,7 @@
       controls.dampingFactor = 0.08;
       controls.minDistance = 0.001;
       controls.maxDistance = 500;
+      controls.target.set(0, 1.5, -3);
       controls.update();
 
       // --- WASD walk mode via PointerLockControls ---
@@ -227,66 +231,39 @@
       }
       renderer.setAnimationLoop(tick);
 
-      // --- Auto-fit on splat load ---
-      let lastBbox = null;
-      let currentMode = "outside"; // or "inside"
-
-      function computeBbox() {
-        // Spark's SplatMesh exposes a bounding-box approximation via Three's
-        // Box3.setFromObject after the splat data has been processed. We try
-        // a few times because the bbox is empty immediately after construction.
-        const box = new THREE.Box3().setFromObject(splatGroup);
-        if (box.isEmpty() || !isFinite(box.min.x) || !isFinite(box.max.x)) return null;
-        return box;
-      }
-
-      function fitCamera(box, mode) {
-        const size = new THREE.Vector3();
-        const center = new THREE.Vector3();
-        box.getSize(size);
-        box.getCenter(center);
-        const diag = size.length();
-
-        if (mode === "inside") {
-          // Place camera INSIDE the room — at the geometric center, raised toward
-          // the top quarter (eye-height heuristic). Target slightly forward.
-          const eyeY = box.min.y + size.y * 0.6;  // 60% up — roughly eye level for an interior
-          camera.position.set(center.x, eyeY, center.z);
-          // Look forward along +Z by default (but if the splat is small in Z, look at +X)
-          const forward = size.z >= size.x ? new THREE.Vector3(0, 0, size.z * 0.45) : new THREE.Vector3(size.x * 0.45, 0, 0);
-          controls.target.copy(new THREE.Vector3(center.x, eyeY, center.z).add(forward));
-        } else {
-          // OUTSIDE: pull back to ~1.5× the diagonal, look at center.
-          const dist = diag * 1.3;
-          camera.position.set(center.x + dist * 0.5, center.y + dist * 0.4, center.z + dist * 0.8);
-          controls.target.copy(center);
-        }
-        camera.near = Math.max(0.001, diag * 0.001);
-        camera.far  = diag * 50;
-        camera.updateProjectionMatrix();
+      // --- Camera presets (no bbox dependency) ---
+      // Spark's SplatMesh doesn't expose standard Three.js geometry, so
+      // Box3.setFromObject returns empty. We use fixed presets that work for
+      // typical Marble interior worlds (Y-up, floor near y=0, walls within ~5m).
+      // User can fine-tune via y_offset/scale and the GO INSIDE / OUTSIDE buttons.
+      let currentMode = "inside";
+      const INSIDE = {
+        pos:    new THREE.Vector3(0, 1.5, 0),
+        target: new THREE.Vector3(0, 1.5, -3),
+      };
+      const OUTSIDE = {
+        pos:    new THREE.Vector3(6, 4, 6),
+        target: new THREE.Vector3(0, 1, 0),
+      };
+      function setView(mode) {
+        const preset = mode === "inside" ? INSIDE : OUTSIDE;
+        camera.position.copy(preset.pos);
+        controls.target.copy(preset.target);
         controls.update();
         currentMode = mode;
         goInside.style.display  = mode === "outside" ? "" : "none";
         resetView.style.display = mode === "inside" ? "" : "none";
-        bboxInfo.textContent = `bbox: ${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)} m`;
       }
 
-      // Poll for bbox to be ready (Spark loads asynchronously).
-      let attempts = 0;
-      const fitInterval = setInterval(() => {
-        attempts++;
-        const box = computeBbox();
-        if (box && box.getSize(new THREE.Vector3()).length() > 0.1) {
-          lastBbox = box;
-          fitCamera(box, "inside"); // start INSIDE the room — that's the whole point of block-bloc
-          status.innerHTML = `Inside the room · <a href="${spzUrl}" target="_blank">.spz</a>`;
-          walkHint.style.display = "";   // surface the WASD hint once geometry loads
-          clearInterval(fitInterval);
-        } else if (attempts > 40) {  // give up after ~20s
-          clearInterval(fitInterval);
-          status.textContent = "Splat loaded but couldn't compute bounds — try the flip toggles ↓";
+      // Show the walk hint + buttons immediately — don't gate on auto-fit
+      walkHint.style.display = "";
+      goInside.style.display = "none";    // already inside by default
+      resetView.style.display = "";
+      setTimeout(() => {
+        if (status.textContent.startsWith("Loading")) {
+          status.innerHTML = `Spark loaded · <a href="${spzUrl}" target="_blank">.spz</a>`;
         }
-      }, 500);
+      }, 3000);
 
       window.addEventListener("resize", () => {
         camera.aspect = window.innerWidth / window.innerHeight;
@@ -299,8 +276,8 @@
       scaleEl.addEventListener("input", () => { scaleVal = parseFloat(scaleEl.value) || 1; applyTransform(); });
       yoffEl.addEventListener("input",  () => { yOffset  = parseFloat(yoffEl.value)  || 0; applyTransform(); });
 
-      goInside.addEventListener("click", () => { if (lastBbox) fitCamera(lastBbox, "inside"); });
-      resetView.addEventListener("click", () => { if (lastBbox) fitCamera(lastBbox, "outside"); });
+      goInside.addEventListener("click", () => setView("inside"));
+      resetView.addEventListener("click", () => setView("outside"));
 
       document.getElementById("copy-url").addEventListener("click", () => {
         const p = new URLSearchParams();
