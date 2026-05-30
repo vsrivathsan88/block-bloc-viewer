@@ -16,6 +16,11 @@
       #info .title { font-size: 14px; margin: 2px 0 8px 0; }
       #info .status { font-size: 12px; opacity: .8; }
       #info a { color: #9cf; }
+      #info button {
+        margin-top: 8px; background: #3576cf; color: #fff; border: none;
+        border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer;
+      }
+      #info button:hover { background: #4286e0; }
       #controls {
         position: fixed; bottom: 12px; left: 12px; z-index: 10;
         background: rgba(0,0,0,.72); padding: 10px 14px; border-radius: 10px;
@@ -31,6 +36,7 @@
       #adjust input[type="number"] { width: 60px; background: rgba(255,255,255,.08); color: #eef; border: 1px solid rgba(255,255,255,.12); border-radius: 4px; padding: 2px 4px; font-family: ui-monospace, monospace; font-size: 11px; }
       #adjust button { background: rgba(255,255,255,.12); color: #eef; border: none; border-radius: 4px; padding: 3px 6px; font-size: 11px; cursor: pointer; margin-top: 4px; }
       #adjust button:hover { background: rgba(255,255,255,.18); }
+      #bbox-info { font-family: ui-monospace, monospace; font-size: 10px; opacity: 0.5; margin-top: 6px; }
     </style>
   </head>
   <body>
@@ -38,6 +44,8 @@
       <div class="label">block-bloc</div>
       <div class="title" id="title">living-room</div>
       <div class="status" id="status">Loading splat via Spark…</div>
+      <button id="go-inside" style="display:none">↵ go inside the room</button>
+      <button id="reset-view" style="display:none; background:#444">⤺ outside view</button>
     </div>
     <div id="controls">
       <kbd>drag</kbd> orbit · <kbd>scroll</kbd> zoom · <kbd>right-drag</kbd> pan
@@ -48,6 +56,7 @@
       <label>scale <input type="number" id="scale-in" step="0.1" /></label>
       <label>y off <input type="number" id="yoff-in" step="0.1" /></label>
       <button id="copy-url">copy URL</button>
+      <div id="bbox-info"></div>
     </div>
 
     <script type="importmap">
@@ -63,31 +72,30 @@
       import { OrbitControls } from "three/addons/controls/OrbitControls.js";
       import { SparkRenderer, SplatMesh } from "https://esm.sh/@sparkjsdev/spark@2.1.0?deps=three@0.180.0";
 
-      // Defaults tuned for Blender-rendered → Marble splats:
-      //   - Blender world is Z-up; Three.js is Y-up → rotate -π/2 around X (so +Z → +Y)
-      //   - Marble splats often come out with the world "below" origin; lift via y_offset
-      //   - Scale baseline 1.0 (Marble's metric_scale_factor is per-world; override if needed)
       const params = new URLSearchParams(window.location.search);
       const DEFAULT_SPZ = "https://cdn.marble.worldlabs.ai/bd1c3e7a-e412-4950-bb82-045f95f047a5/0dea05c6-6b15-4d51-bc0d-5f46b5e3df5a_ceramic_500k.spz";
       const spzUrl = params.get("spz") || DEFAULT_SPZ;
       const titleArg = params.get("title");
       if (titleArg) document.getElementById("title").textContent = titleArg;
 
-      // Coordinate-frame controls (live-tweakable via URL or UI)
-      let flipY = params.get("flip_y") === "true" || params.get("flip_y") === null; // default ON
+      // Marble splats are natively Y-up (web/Three.js convention), so by default
+      // we apply NO rotation. flip_y toggles a 180° X-axis flip (upside-down fix)
+      // if a particular splat needs it. flip_z spins 180° around Y.
+      let flipY = params.get("flip_y") === "true";   // default false
       let flipZ = params.get("flip_z") === "true";
       let scaleVal = parseFloat(params.get("scale") || "1.0");
       let yOffset = parseFloat(params.get("y_offset") || "0.0");
 
-      // Mirror current values into the UI
       const flipYEl = document.getElementById("flip-y-in"); flipYEl.checked = flipY;
       const flipZEl = document.getElementById("flip-z-in"); flipZEl.checked = flipZ;
       const scaleEl = document.getElementById("scale-in"); scaleEl.value = String(scaleVal);
       const yoffEl  = document.getElementById("yoff-in");  yoffEl.value  = String(yOffset);
 
       const status = document.getElementById("status");
+      const bboxInfo = document.getElementById("bbox-info");
+      const goInside = document.getElementById("go-inside");
+      const resetView = document.getElementById("reset-view");
 
-      // --- THREE setup ---
       const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.setSize(window.innerWidth, window.innerHeight);
@@ -97,41 +105,97 @@
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x050507);
 
-      const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 200);
-      camera.position.set(2.5, 1.6, 2.5);   // eye height ~1.6m, slight angle into the room
-      camera.lookAt(0, 1.4, 0);
+      const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 500);
+      camera.position.set(0, 0, 3);     // placeholder; will be reset after auto-fit
+      camera.lookAt(0, 0, 0);
 
-      // --- Spark setup ---
       const spark = new SparkRenderer({ renderer });
       scene.add(spark);
 
-      // Wrapper group so we can flip/scale/offset the splat in real time
       const splatGroup = new THREE.Group();
       const applyTransform = () => {
         splatGroup.rotation.set(
-          flipY ? -Math.PI / 2 : 0,   // Z-up → Y-up rotation around X
+          flipY ? Math.PI : 0,        // 180° around X (upside-down fix)
+          flipZ ? Math.PI : 0,        // 180° around Y (front/back fix)
           0,
-          flipZ ? Math.PI : 0,        // 180° around Y if Marble flipped front/back
         );
         splatGroup.position.set(0, yOffset, 0);
         splatGroup.scale.setScalar(scaleVal);
+        // Refit camera after a transform change
+        if (lastBbox) fitCamera(lastBbox, currentMode);
       };
-      applyTransform();
       scene.add(splatGroup);
 
       const splat = new SplatMesh({ url: spzUrl });
       splatGroup.add(splat);
 
-      // --- Orbit controls ---
       const controls = new OrbitControls(camera, renderer.domElement);
-      controls.target.set(0, 1.4, 0);
       controls.enableDamping = true;
       controls.dampingFactor = 0.08;
-      controls.minDistance = 0.05;
-      controls.maxDistance = 25;
+      controls.minDistance = 0.001;
+      controls.maxDistance = 500;
       controls.update();
 
-      // --- Render loop ---
+      // --- Auto-fit on splat load ---
+      let lastBbox = null;
+      let currentMode = "outside"; // or "inside"
+
+      function computeBbox() {
+        // Spark's SplatMesh exposes a bounding-box approximation via Three's
+        // Box3.setFromObject after the splat data has been processed. We try
+        // a few times because the bbox is empty immediately after construction.
+        const box = new THREE.Box3().setFromObject(splatGroup);
+        if (box.isEmpty() || !isFinite(box.min.x) || !isFinite(box.max.x)) return null;
+        return box;
+      }
+
+      function fitCamera(box, mode) {
+        const size = new THREE.Vector3();
+        const center = new THREE.Vector3();
+        box.getSize(size);
+        box.getCenter(center);
+        const diag = size.length();
+
+        if (mode === "inside") {
+          // Place camera INSIDE the room — at the geometric center, raised toward
+          // the top quarter (eye-height heuristic). Target slightly forward.
+          const eyeY = box.min.y + size.y * 0.6;  // 60% up — roughly eye level for an interior
+          camera.position.set(center.x, eyeY, center.z);
+          // Look forward along +Z by default (but if the splat is small in Z, look at +X)
+          const forward = size.z >= size.x ? new THREE.Vector3(0, 0, size.z * 0.45) : new THREE.Vector3(size.x * 0.45, 0, 0);
+          controls.target.copy(new THREE.Vector3(center.x, eyeY, center.z).add(forward));
+        } else {
+          // OUTSIDE: pull back to ~1.5× the diagonal, look at center.
+          const dist = diag * 1.3;
+          camera.position.set(center.x + dist * 0.5, center.y + dist * 0.4, center.z + dist * 0.8);
+          controls.target.copy(center);
+        }
+        camera.near = Math.max(0.001, diag * 0.001);
+        camera.far  = diag * 50;
+        camera.updateProjectionMatrix();
+        controls.update();
+        currentMode = mode;
+        goInside.style.display  = mode === "outside" ? "" : "none";
+        resetView.style.display = mode === "inside" ? "" : "none";
+        bboxInfo.textContent = `bbox: ${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)} m`;
+      }
+
+      // Poll for bbox to be ready (Spark loads asynchronously).
+      let attempts = 0;
+      const fitInterval = setInterval(() => {
+        attempts++;
+        const box = computeBbox();
+        if (box && box.getSize(new THREE.Vector3()).length() > 0.1) {
+          lastBbox = box;
+          fitCamera(box, "inside"); // start INSIDE the room — that's the whole point of block-bloc
+          status.innerHTML = `Inside the room · <a href="${spzUrl}" target="_blank">.spz</a>`;
+          clearInterval(fitInterval);
+        } else if (attempts > 40) {  // give up after ~20s
+          clearInterval(fitInterval);
+          status.textContent = "Splat loaded but couldn't compute bounds — try the flip toggles ↓";
+        }
+      }, 500);
+
       renderer.setAnimationLoop(() => {
         controls.update();
         renderer.render(scene, camera);
@@ -143,19 +207,13 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
       });
 
-      // Status
-      setTimeout(() => {
-        if (status.textContent.startsWith("Loading")) status.innerHTML = 'Spark loaded · <a href="' + spzUrl + '" target="_blank">.spz</a> · drag to orbit';
-      }, 4000);
-      splat.addEventListener?.("load", () => {
-        status.innerHTML = 'Loaded · <a href="' + spzUrl + '" target="_blank">.spz</a> · drag to orbit';
-      });
-
-      // --- Live UI tweaks ---
       flipYEl.addEventListener("change", () => { flipY = flipYEl.checked; applyTransform(); });
       flipZEl.addEventListener("change", () => { flipZ = flipZEl.checked; applyTransform(); });
       scaleEl.addEventListener("input", () => { scaleVal = parseFloat(scaleEl.value) || 1; applyTransform(); });
       yoffEl.addEventListener("input",  () => { yOffset  = parseFloat(yoffEl.value)  || 0; applyTransform(); });
+
+      goInside.addEventListener("click", () => { if (lastBbox) fitCamera(lastBbox, "inside"); });
+      resetView.addEventListener("click", () => { if (lastBbox) fitCamera(lastBbox, "outside"); });
 
       document.getElementById("copy-url").addEventListener("click", () => {
         const p = new URLSearchParams();
