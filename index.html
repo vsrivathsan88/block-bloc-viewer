@@ -50,9 +50,12 @@
       <label>scale <input type="number" id="scale-in" step="0.1" /></label>
       <label>y off <input type="number" id="yoff-in" step="0.1" /></label>
       <button id="reset-spawn">↵ reset to spawn</button>
+      <button id="record-flythrough" style="background:#3576cf;color:#fff">🎬 record flythrough</button>
       <button id="copy-url">copy URL</button>
       <div id="bbox-info"></div>
     </div>
+    <div id="record-overlay" style="display:none; position:fixed; top:0; left:0; right:0; height:4px; background:#e74c3c; z-index:20; transition:width 0.1s linear;"></div>
+    <div id="record-status" style="display:none; position:fixed; top:14px; right:14px; z-index:20; background:rgba(231,76,60,.9); color:#fff; padding:6px 10px; border-radius:6px; font-size:12px; font-family:ui-monospace,monospace;"></div>
 
     <script type="importmap">
       {
@@ -255,6 +258,121 @@
         btn.textContent = "copied!";
         setTimeout(() => { btn.textContent = prev; }, 1200);
       });
+
+      // --- Flythrough recorder ---
+      // Animates the camera on a deterministic trajectory (orbit + slow dolly)
+      // through the bbox center, captures the canvas via MediaRecorder, and
+      // triggers a download of the resulting WebM. ~8 seconds at 30fps.
+      // No external deps; works in any modern browser. ffmpeg/MP4 conversion
+      // can happen offline if needed.
+      const DURATION_SEC = 8;
+      const FPS = 30;
+      const recordBtn = document.getElementById("record-flythrough");
+      const recordOverlay = document.getElementById("record-overlay");
+      const recordStatus = document.getElementById("record-status");
+      let recording = false;
+
+      function pickTrajectory(box) {
+        // 8-second smooth path: enter from the inside corner, slow orbit, end
+        // back near spawn. Yaw sweeps ~270°, slight forward/back dolly,
+        // small head tilt for cinematic feel.
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const eyeY = center.y + size.y * 0.05;
+        const radius = Math.min(size.x, size.z) * 0.30;
+        const totalFrames = DURATION_SEC * FPS;
+        return Array.from({ length: totalFrames }, (_, i) => {
+          const t = i / (totalFrames - 1);                  // 0..1
+          const easedT = 0.5 - 0.5 * Math.cos(Math.PI * t); // ease-in-out
+          const yaw = -Math.PI / 2 + easedT * Math.PI * 1.5; // sweep 270°
+          const pulseR = radius * (1 + 0.25 * Math.sin(t * Math.PI * 2));
+          return {
+            position: new THREE.Vector3(
+              center.x + Math.cos(yaw) * pulseR,
+              eyeY + size.y * 0.02 * Math.sin(t * Math.PI * 4),  // gentle bob
+              center.z + Math.sin(yaw) * pulseR
+            ),
+            lookAt: new THREE.Vector3(center.x, eyeY - 0.1, center.z),
+          };
+        });
+      }
+
+      async function recordFlythrough() {
+        if (recording) return;
+        if (!localBbox) { alert("splat not loaded yet"); return; }
+        recording = true;
+        recordBtn.disabled = true;
+        recordBtn.textContent = "🎬 recording…";
+        recordStatus.style.display = "";
+        recordOverlay.style.display = "";
+
+        // 1. Compute trajectory in WORLD space (splatGroup may be rotated).
+        splatGroup.updateMatrixWorld(true);
+        const worldBox = localBbox.clone().applyMatrix4(splatGroup.matrixWorld);
+        const trajectory = pickTrajectory(worldBox);
+
+        // 2. Set up MediaRecorder on the renderer's canvas.
+        const canvas = renderer.domElement;
+        const stream = canvas.captureStream(FPS);
+        const mimeCandidates = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+        const mimeType = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || "";
+        const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
+        const chunks = [];
+        recorder.ondataavailable = (e) => e.data && e.data.size > 0 && chunks.push(e.data);
+
+        // 3. Drive the camera through the trajectory. Use rAF aligned with our
+        //    animation loop's frame rate. The renderer's setAnimationLoop is
+        //    still running and rendering each frame, so the canvas captureStream
+        //    picks up every frame.
+        recorder.start();
+        const startTime = performance.now();
+        let frameIdx = 0;
+        const frameMs = 1000 / FPS;
+
+        await new Promise((resolve) => {
+          function step() {
+            const elapsed = performance.now() - startTime;
+            frameIdx = Math.min(trajectory.length - 1, Math.floor(elapsed / frameMs));
+            const t = trajectory[frameIdx];
+            camera.position.copy(t.position);
+            camera.lookAt(t.lookAt);
+            // Sync the yaw/pitch state so when recording stops, OrbitControls
+            // doesn't snap the camera back to the smoothed value.
+            const m = new THREE.Matrix4().lookAt(t.position, t.lookAt, _up);
+            const q = new THREE.Quaternion().setFromRotationMatrix(m);
+            const e = new THREE.Euler().setFromQuaternion(q, "YXZ");
+            rawYaw = smoothYaw = e.y;
+            rawPitch = smoothPitch = e.x;
+            // Update progress bar
+            const pct = frameIdx / (trajectory.length - 1);
+            recordOverlay.style.width = (pct * 100) + "%";
+            recordStatus.textContent = `recording · ${frameIdx + 1} / ${trajectory.length}`;
+            if (frameIdx >= trajectory.length - 1) resolve();
+            else requestAnimationFrame(step);
+          }
+          requestAnimationFrame(step);
+        });
+
+        // 4. Stop and download.
+        await new Promise((resolve) => {
+          recorder.onstop = resolve;
+          recorder.stop();
+        });
+        const blob = new Blob(chunks, { type: mimeType || "video/webm" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${titleArg || "block-bloc-flythrough"}-${Date.now()}.webm`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+
+        recordStatus.textContent = `saved · ${(blob.size / 1024 / 1024).toFixed(1)} MB`;
+        recordOverlay.style.display = "none";
+        recordBtn.disabled = false;
+        recordBtn.textContent = "🎬 record flythrough";
+        setTimeout(() => { recordStatus.style.display = "none"; }, 4000);
+        recording = false;
+      }
+      recordBtn.addEventListener("click", recordFlythrough);
 
       // --- Auto-fit using Spark's getBoundingBox() ---
       let attempts = 0;
