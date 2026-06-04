@@ -178,14 +178,27 @@
         const worldBox = localBox.clone().applyMatrix4(splatGroup.matrixWorld);
         const center = worldBox.getCenter(new THREE.Vector3());
         const size = worldBox.getSize(new THREE.Vector3());
-        // Spawn at the exact center of the world bbox. Spark's bbox often
-        // extends past the "real" room (splat halos at edges), so anywhere
-        // inside the bbox is "inside the room." Center is the safest pick.
-        // We pull eye height slightly above center (60% up) so the user
-        // doesn't spawn at floor level when the bbox includes the ceiling.
-        const eyeY = center.y + size.y * 0.1;  // 10% above center, capped to bbox
-        spawnPos.set(center.x, Math.min(eyeY, worldBox.max.y - 0.2), center.z);
+
+        // Smart floor estimation (borrowed from neilsonnn's GLB pipeline):
+        // Spark's getBoundingBox() can include sparse "halo" splats above the
+        // ceiling and below the floor — making min.y / max.y unreliable as
+        // floor/ceiling. If the bbox vertical span exceeds typical interior
+        // heights (>3.5m), assume halos and use a 2.5m room window centered
+        // on the bbox midpoint.
+        const TALL_BBOX_THRESHOLD = 3.5;
+        const ASSUMED_ROOM_HEIGHT = 2.5;
+        let floorY = worldBox.min.y;
+        let ceilingY = worldBox.max.y;
+        let floorEst = "bbox";
+        if (size.y > TALL_BBOX_THRESHOLD) {
+          floorY = center.y - ASSUMED_ROOM_HEIGHT / 2;
+          ceilingY = center.y + ASSUMED_ROOM_HEIGHT / 2;
+          floorEst = `centered(${ASSUMED_ROOM_HEIGHT}m)`;
+        }
+        const eyeY = Math.min(floorY + 1.6, ceilingY - 0.2);
+        spawnPos.set(center.x, eyeY, center.z);
         camera.position.copy(spawnPos);
+
         if (size.z >= size.x) {
           rawYaw = 0;             // facing -Z
         } else {
@@ -199,6 +212,7 @@
           `world bbox: ${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)} m<br>` +
           `min: (${worldBox.min.x.toFixed(2)}, ${worldBox.min.y.toFixed(2)}, ${worldBox.min.z.toFixed(2)})<br>` +
           `max: (${worldBox.max.x.toFixed(2)}, ${worldBox.max.y.toFixed(2)}, ${worldBox.max.z.toFixed(2)})<br>` +
+          `floor: ${floorEst} (y=${floorY.toFixed(2)})<br>` +
           `spawn: (${spawnPos.x.toFixed(2)}, ${spawnPos.y.toFixed(2)}, ${spawnPos.z.toFixed(2)})`;
       }
 
