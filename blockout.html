@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>block-bloc · blockout viewer</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0b0e; color: #eef; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      canvas { display: block; }
+      #info {
+        position: fixed; top: 12px; left: 12px; z-index: 10;
+        background: rgba(0,0,0,.72); padding: 12px 16px; border-radius: 10px;
+        max-width: 340px; backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.08);
+      }
+      #info .label { font-size: 11px; letter-spacing: .15em; text-transform: uppercase; opacity: .55; }
+      #info .title { font-size: 14px; margin: 2px 0 6px 0; }
+      #info .status { font-size: 12px; opacity: .8; }
+      #legend {
+        position: fixed; bottom: 12px; right: 12px; z-index: 10;
+        background: rgba(0,0,0,.72); padding: 10px 14px; border-radius: 10px;
+        font-size: 11px; backdrop-filter: blur(8px); max-width: 240px;
+      }
+      #legend .item { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+      #legend .chip { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+      #controls {
+        position: fixed; bottom: 12px; left: 12px; z-index: 10;
+        background: rgba(0,0,0,.72); padding: 10px 14px; border-radius: 10px;
+        font-size: 11px; opacity: .85; backdrop-filter: blur(8px);
+      }
+      #controls kbd { background: rgba(255,255,255,.12); padding: 1px 5px; border-radius: 3px; font-family: ui-monospace, monospace; font-size: 10px; }
+      #drop-hint {
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+        border: 2px dashed rgba(255,255,255,.25); border-radius: 16px;
+        padding: 40px 60px; font-size: 14px; opacity: 0; pointer-events: none;
+        transition: opacity .15s; z-index: 20; background: rgba(0,0,0,.6);
+      }
+      body.dragging #drop-hint { opacity: 1; }
+    </style>
+  </head>
+  <body>
+    <div id="info">
+      <div class="label">block-bloc · blockout</div>
+      <div class="title" id="title">teal-bedroom (embedded demo)</div>
+      <div class="status" id="status">drag-drop any 0-schema.json to view it</div>
+    </div>
+    <div id="legend"></div>
+    <div id="controls">
+      <kbd>drag</kbd> orbit · <kbd>scroll</kbd> zoom · <kbd>right-drag</kbd> pan · <kbd>drop</kbd> schema JSON
+    </div>
+    <div id="drop-hint">drop schema JSON</div>
+
+    <script type="importmap">
+      { "imports": { "three": "https://esm.sh/three@0.180.0", "three/addons/": "https://esm.sh/three@0.180.0/examples/jsm/" } }
+    </script>
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+      // Embedded demo schema (teal-bedroom). Replace by ?schema=<url> or drag-drop.
+      const DEMO_SCHEMA = {
+        units: "meters",
+        bbox: { min: { x: 0, y: 0 }, max: { x: 3.3, y: 3.1 } },
+        ceiling_height: 2.6,
+        walls: [
+          { start: { x: 0,   y: 0   }, end: { x: 3.3, y: 0   }, thickness: 0.12 },
+          { start: { x: 3.3, y: 0   }, end: { x: 3.3, y: 3.1 }, thickness: 0.12 },
+          { start: { x: 3.3, y: 3.1 }, end: { x: 0,   y: 3.1 }, thickness: 0.12 },
+          { start: { x: 0,   y: 3.1 }, end: { x: 0,   y: 0   }, thickness: 0.12 },
+        ],
+        openings: [
+          { kind: "door",   wall_index: 1, position_along_wall: 0.15, width: 0.85, height: 2.05, sill_height: 0 },
+          { kind: "door",   wall_index: 3, position_along_wall: 0.18, width: 0.8,  height: 2.05, sill_height: 0 },
+          { kind: "window", wall_index: 1, position_along_wall: 0.62, width: 1.1,  height: 1.3,  sill_height: 0.85 },
+        ],
+        furniture: [
+          { label: "double_bed",      bbox: { width: 1.6,  depth: 2.05, height: 0.55 }, position: { x: 1.45, y: 2.0  }, rotation_deg: 0 },
+          { label: "headboard",       bbox: { width: 1.7,  depth: 0.1,  height: 1.1  }, position: { x: 1.55, y: 3.02 }, rotation_deg: 0 },
+          { label: "desk_semicircle", bbox: { width: 0.55, depth: 1.3,  height: 0.74 }, position: { x: 2.95, y: 2.2  }, rotation_deg: 0 },
+          { label: "desk_chair",      bbox: { width: 0.6,  depth: 0.6,  height: 0.85 }, position: { x: 2.75, y: 1.05 }, rotation_deg: -30 },
+          { label: "armchair",        bbox: { width: 0.75, depth: 0.75, height: 0.8  }, position: { x: 0.55, y: 0.55 }, rotation_deg: 35 },
+          { label: "side_table_round",bbox: { width: 0.4,  depth: 0.4,  height: 0.5  }, position: { x: 1.25, y: 0.45 }, rotation_deg: 0 },
+          { label: "bench_dresser",   bbox: { width: 1.5,  depth: 0.35, height: 0.45 }, position: { x: 2.25, y: 0.25 }, rotation_deg: 0 },
+          { label: "rug_halfround",   bbox: { width: 1.4,  depth: 0.8,  height: 0.02 }, position: { x: 1.55, y: 0.85 }, rotation_deg: 0 },
+        ],
+      };
+
+      const PALETTE = [0x8ecae6, 0xffb703, 0x90be6d, 0xf28482, 0xcdb4db, 0xf9c74f, 0x80ed99, 0xf4a261, 0xa8dadc, 0xe9c46a];
+      const statusEl = document.getElementById("status");
+      const titleEl = document.getElementById("title");
+      const legendEl = document.getElementById("legend");
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.shadowMap.enabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0b0b0e);
+
+      const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.05, 200);
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+
+      // Lighting
+      scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+      const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+      sun.position.set(6, 10, 4);
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(2048, 2048);
+      scene.add(sun);
+
+      let roomGroup = null;
+
+      // Schema (x, y) is the floor plane; Three.js ground plane is (x, z).
+      // Map schema (x, y, h) → three (x, h, y) and flip z so plan-north faces -z.
+      function buildScene(schema) {
+        if (roomGroup) { scene.remove(roomGroup); roomGroup = null; }
+        roomGroup = new THREE.Group();
+        legendEl.innerHTML = "";
+
+        const H = schema.ceiling_height ?? 2.7;
+        const min = schema.bbox.min, max = schema.bbox.max;
+        const W = max.x - min.x, D = max.y - min.y;
+        const cx = (min.x + max.x) / 2, cy = (min.y + max.y) / 2;
+        const toWorld = (x, y, z) => new THREE.Vector3(x - cx, z, -(y - cy));
+
+        // Floor
+        const floor = new THREE.Mesh(
+          new THREE.BoxGeometry(W, 0.05, D),
+          new THREE.MeshStandardMaterial({ color: 0x9a8468, roughness: 0.9 }),
+        );
+        floor.position.copy(toWorld(cx, cy, -0.025));
+        floor.receiveShadow = true;
+        roomGroup.add(floor);
+
+        // Walls with openings: split each wall into solid segments around its
+        // openings (left/right pieces + lintel above doors + sill below windows).
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0xd9d4cc, roughness: 0.85 });
+        (schema.walls ?? []).forEach((w, wi) => {
+          const sx = w.start.x, sy = w.start.y, ex = w.end.x, ey = w.end.y;
+          const t = w.thickness ?? 0.15;
+          const len = Math.hypot(ex - sx, ey - sy);
+          if (len < 1e-6) return;
+          const angle = Math.atan2(ey - sy, ex - sx);
+
+          const ops = (schema.openings ?? [])
+            .filter((o) => o.wall_index === wi)
+            .map((o) => ({
+              a: Math.max(0, o.position_along_wall * len - o.width / 2),
+              b: Math.min(len, o.position_along_wall * len + o.width / 2),
+              sill: o.sill_height ?? 0,
+              top: (o.sill_height ?? 0) + o.height,
+            }))
+            .sort((p, q) => p.a - q.a);
+
+          const seg = (a, b, z0, z1) => {
+            if (b - a < 0.01 || z1 - z0 < 0.01) return;
+            const mid = (a + b) / 2;
+            const px = sx + Math.cos(angle) * mid;
+            const py = sy + Math.sin(angle) * mid;
+            const box = new THREE.Mesh(new THREE.BoxGeometry(b - a, z1 - z0, t), wallMat);
+            box.position.copy(toWorld(px, py, (z0 + z1) / 2));
+            box.rotation.y = angle;   // schema-plane rotation maps to three Y
+            box.castShadow = box.receiveShadow = true;
+            roomGroup.add(box);
+          };
+
+          let cursor = 0;
+          for (const o of ops) {
+            seg(cursor, o.a, 0, H);          // solid run before the opening
+            seg(o.a, o.b, 0, o.sill);        // sill below (windows)
+            seg(o.a, o.b, o.top, H);         // lintel above
+            cursor = o.b;
+          }
+          seg(cursor, len, 0, H);            // remainder
+        });
+
+        // Furniture boxes
+        (schema.furniture ?? []).forEach((f, i) => {
+          const color = PALETTE[i % PALETTE.length];
+          const m = new THREE.Mesh(
+            new THREE.BoxGeometry(f.bbox.width, f.bbox.height, f.bbox.depth),
+            new THREE.MeshStandardMaterial({ color, roughness: 0.7 }),
+          );
+          m.position.copy(toWorld(f.position.x, f.position.y, f.bbox.height / 2));
+          m.rotation.y = THREE.MathUtils.degToRad(f.rotation_deg ?? 0);
+          m.castShadow = m.receiveShadow = true;
+          roomGroup.add(m);
+          const item = document.createElement("div");
+          item.className = "item";
+          item.innerHTML = `<span class="chip" style="background:#${color.toString(16).padStart(6, "0")}"></span>${f.label}`;
+          legendEl.appendChild(item);
+        });
+
+        scene.add(roomGroup);
+
+        // Frame camera on the room
+        const diag = Math.hypot(W, D);
+        camera.position.set(diag * 0.9, diag * 0.85, diag * 0.9);
+        controls.target.set(0, H * 0.3, 0);
+        controls.update();
+        statusEl.textContent = `${(schema.walls ?? []).length} walls · ${(schema.openings ?? []).length} openings · ${(schema.furniture ?? []).length} furniture · ${W.toFixed(1)}×${D.toFixed(1)}m`;
+      }
+
+      // Input sources: ?schema=<url> → fetch; drag-drop; else embedded demo.
+      const params = new URLSearchParams(location.search);
+      const schemaUrl = params.get("schema");
+      if (schemaUrl) {
+        titleEl.textContent = schemaUrl.split("/").pop();
+        fetch(schemaUrl).then((r) => r.json()).then(buildScene)
+          .catch((e) => { statusEl.textContent = "failed to load schema: " + e.message; buildScene(DEMO_SCHEMA); });
+      } else {
+        buildScene(DEMO_SCHEMA);
+      }
+
+      addEventListener("dragover", (e) => { e.preventDefault(); document.body.classList.add("dragging"); });
+      addEventListener("dragleave", () => document.body.classList.remove("dragging"));
+      addEventListener("drop", async (e) => {
+        e.preventDefault();
+        document.body.classList.remove("dragging");
+        const file = e.dataTransfer.files?.[0];
+        if (!file) return;
+        try {
+          const schema = JSON.parse(await file.text());
+          titleEl.textContent = file.name;
+          buildScene(schema);
+        } catch (err) {
+          statusEl.textContent = "not valid schema JSON: " + err.message;
+        }
+      });
+
+      renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+      addEventListener("resize", () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+      });
+    </script>
+  </body>
+</html>
