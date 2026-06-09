@@ -182,24 +182,41 @@
         const center = worldBox.getCenter(new THREE.Vector3());
         const size = worldBox.getSize(new THREE.Vector3());
 
-        // Smart floor estimation (borrowed from neilsonnn's GLB pipeline):
-        // Spark's getBoundingBox() can include sparse "halo" splats above the
-        // ceiling and below the floor — making min.y / max.y unreliable as
-        // floor/ceiling. If the bbox vertical span exceeds typical interior
-        // heights (>3.5m), assume halos and use a 2.5m room window centered
-        // on the bbox midpoint.
-        const TALL_BBOX_THRESHOLD = 3.5;
-        const ASSUMED_ROOM_HEIGHT = 2.5;
-        let floorY = worldBox.min.y;
-        let ceilingY = worldBox.max.y;
-        let floorEst = "bbox";
-        if (size.y > TALL_BBOX_THRESHOLD) {
-          floorY = center.y - ASSUMED_ROOM_HEIGHT / 2;
-          ceilingY = center.y + ASSUMED_ROOM_HEIGHT / 2;
-          floorEst = `centered(${ASSUMED_ROOM_HEIGHT}m)`;
+        // block-bloc pipeline contract: the Blender pano camera was placed at
+        // a known eye-height position INSIDE the room. Marble's splat output
+        // puts the world origin AT that camera location. So (0,0,0) in splat-
+        // world space is, by construction, inside the room at eye level. The
+        // flip_y rotation (Math.PI around X) doesn't move the origin.
+        // We just trust (0,0,0) — no bbox math needed.
+        //
+        // Fallback: if origin is outside the world bbox (could happen for
+        // splats from sources other than our pipeline), fall back to a smart-
+        // floor heuristic centered on bbox center.
+        const originInside =
+          worldBox.min.x <= 0.5 && worldBox.max.x >= -0.5 &&
+          worldBox.min.y <= 0.5 && worldBox.max.y >= -0.5 &&
+          worldBox.min.z <= 0.5 && worldBox.max.z >= -0.5;
+
+        let floorEst;
+        if (originInside) {
+          // Trust the pipeline. Spawn at origin.
+          spawnPos.set(0, 0, 0);
+          floorEst = "origin (pipeline contract)";
+        } else {
+          // Fallback heuristic for non-pipeline splats.
+          const TALL = 3.5, ROOM_H = 2.5;
+          let floorY = worldBox.min.y;
+          let ceilingY = worldBox.max.y;
+          if (size.y > TALL) {
+            floorY = center.y - ROOM_H / 2;
+            ceilingY = center.y + ROOM_H / 2;
+            floorEst = `bbox-fallback (halo-inflated, room ${ROOM_H}m)`;
+          } else {
+            floorEst = "bbox-fallback";
+          }
+          const eyeY = Math.min(floorY + 1.6, ceilingY - 0.2);
+          spawnPos.set(center.x, eyeY, center.z);
         }
-        const eyeY = Math.min(floorY + 1.6, ceilingY - 0.2);
-        spawnPos.set(center.x, eyeY, center.z);
         camera.position.copy(spawnPos);
 
         if (size.z >= size.x) {
@@ -215,8 +232,7 @@
           `world bbox: ${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)} m<br>` +
           `min: (${worldBox.min.x.toFixed(2)}, ${worldBox.min.y.toFixed(2)}, ${worldBox.min.z.toFixed(2)})<br>` +
           `max: (${worldBox.max.x.toFixed(2)}, ${worldBox.max.y.toFixed(2)}, ${worldBox.max.z.toFixed(2)})<br>` +
-          `floor: ${floorEst} (y=${floorY.toFixed(2)})<br>` +
-          `spawn: (${spawnPos.x.toFixed(2)}, ${spawnPos.y.toFixed(2)}, ${spawnPos.z.toFixed(2)})`;
+          `spawn: ${floorEst} → (${spawnPos.x.toFixed(2)}, ${spawnPos.y.toFixed(2)}, ${spawnPos.z.toFixed(2)})`;
       }
 
       function resetToSpawn() {
