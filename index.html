@@ -219,10 +219,16 @@
         }
         camera.position.copy(spawnPos);
 
-        if (size.z >= size.x) {
-          rawYaw = 0;             // facing -Z
+        // Face AWAY from the bbox-center offset. Marble dreams content beyond
+        // windows/doors (trees, sky), which skews the bbox heavily toward one
+        // side. The bbox center points INTO that dreamed fuzz; the real room
+        // interior is on the opposite side of the spawn. So look opposite.
+        const skew = new THREE.Vector3(center.x - spawnPos.x, 0, center.z - spawnPos.z);
+        if (skew.lengthSq() > 0.25) {
+          const d = skew.normalize().negate();   // away from the dreamed mass
+          rawYaw = Math.atan2(-d.x, -d.z);
         } else {
-          rawYaw = -Math.PI / 2;  // facing -X
+          rawYaw = 0;  // bbox roughly centered on spawn — any direction is fine
         }
         rawPitch = 0;
         smoothYaw = rawYaw;
