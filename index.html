@@ -100,7 +100,10 @@
       const bboxInfo = document.getElementById("bbox-info");
 
       // --- Three + Spark setup ---
-      const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+      // preserveDrawingBuffer is required for canvas.toDataURL() to return real
+      // pixels after a render — needed by the headless flythrough recorder
+      // (Playwright's page.screenshot hangs on WebGL surfaces). Tiny perf cost.
+      const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
