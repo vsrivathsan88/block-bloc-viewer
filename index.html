@@ -187,14 +187,23 @@
       const recStatus = document.getElementById("record-status");
       let recording = false;
 
-      // Pose at normalized time t (0..1): position drifts on a small circle
-      // around origin; look direction sweeps a full turn. Returns {pos, quat}.
+      // Pose at normalized time t (0..1). Starts and ends at the EXACT original
+      // capture pose: position (0,0,0), looking down -Z (the camera's identity
+      // orientation). A Three.js camera at identity looks toward -Z, and the
+      // splat is oriented (quaternion 1,0,0,0) so that -Z is the room's "front"
+      // — i.e. how Marble captured it. The sweep yaws a full 360° back to start,
+      // and the lateral drift is enveloped by sin(πt) so it's exactly 0 at both
+      // ends. Net: frame 0 = the capture pose, the clip loops cleanly.
       function poseAt(t) {
-        const yaw = t * Math.PI * 2;
-        const px = Math.cos(yaw + Math.PI / 2) * DRIFT;
-        const pz = Math.sin(yaw + Math.PI / 2) * DRIFT;
-        const py = 0.04 * Math.sin(t * Math.PI * 2);
-        const look = new THREE.Vector3(px + Math.sin(yaw) * 3, py - 0.1, pz + Math.cos(yaw) * 3);
+        const yaw = t * Math.PI * 2;                 // 0 → 2π, back to facing -Z
+        const drift = DRIFT * Math.sin(Math.PI * t); // 0 at t=0 and t=1, max mid
+        const px = Math.cos(yaw) * drift;
+        const pz = Math.sin(yaw) * drift;
+        const py = 0.03 * Math.sin(Math.PI * t * 2); // subtle bob, 0 at t=0
+        // Forward(yaw=0) = -Z so frame 0 matches camera identity. As yaw grows,
+        // forward sweeps a full turn: (-sin yaw, 0, -cos yaw).
+        const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+        const look = new THREE.Vector3(px + fx * 3, py - 0.08, pz + fz * 3);
         const m = new THREE.Matrix4().lookAt(new THREE.Vector3(px, py, pz), look, new THREE.Vector3(0, 1, 0));
         const q = new THREE.Quaternion().setFromRotationMatrix(m);
         return { pos: [px, py, pz], quat: [q.x, q.y, q.z, q.w] };
