@@ -6,8 +6,7 @@
     <title>block-bloc · viewer</title>
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; background: #050507; color: #eef; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-      canvas { display: block; cursor: grab; }
-      canvas.locked { cursor: none; }
+      canvas { display: block; }
       #info {
         position: fixed; top: 12px; left: 12px; z-index: 10;
         background: rgba(0,0,0,.72); padding: 12px 16px; border-radius: 10px;
@@ -29,10 +28,10 @@
         font-size: 11px; backdrop-filter: blur(8px); display: flex; flex-direction: column; gap: 4px;
       }
       #adjust label { display: flex; gap: 6px; align-items: center; opacity: .85; }
-      #adjust input[type="number"] { width: 60px; background: rgba(255,255,255,.08); color: #eef; border: 1px solid rgba(255,255,255,.12); border-radius: 4px; padding: 2px 4px; font-family: ui-monospace, monospace; font-size: 11px; }
       #adjust button { background: rgba(255,255,255,.12); color: #eef; border: none; border-radius: 4px; padding: 4px 8px; font-size: 11px; cursor: pointer; margin-top: 4px; }
       #adjust button:hover { background: rgba(255,255,255,.18); }
-      #bbox-info { font-family: ui-monospace, monospace; font-size: 10px; opacity: 0.55; margin-top: 6px; line-height: 1.4; }
+      #record-overlay { position: fixed; top: 0; left: 0; right: 0; height: 4px; background: #e74c3c; z-index: 20; transition: width .1s linear; display: none; }
+      #record-status { position: fixed; top: 14px; right: 14px; z-index: 20; background: rgba(231,76,60,.9); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-family: ui-monospace, monospace; display: none; }
     </style>
   </head>
   <body>
@@ -42,436 +41,213 @@
       <div class="status" id="status">Loading splat via Spark…</div>
     </div>
     <div id="controls">
-      <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · <kbd>Q</kbd>/<kbd>E</kbd> down/up · <kbd>⇧</kbd> run · <kbd>click</kbd> + mouse to look · <kbd>ESC</kbd> release mouse
+      <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Q</kbd>/<kbd>E</kbd> roll · <kbd>⇧</kbd> faster · <kbd>drag</kbd> look
     </div>
     <div id="adjust">
       <label>flip Y <input type="checkbox" id="flip-y-in" /></label>
       <label>flip Z <input type="checkbox" id="flip-z-in" /></label>
-      <label>scale <input type="number" id="scale-in" step="0.1" /></label>
-      <label>y off <input type="number" id="yoff-in" step="0.1" /></label>
-      <button id="reset-spawn">↵ reset to spawn</button>
+      <button id="reset-view">↵ back to capture pose</button>
       <button id="record-flythrough" style="background:#3576cf;color:#fff">🎬 record flythrough</button>
       <button id="copy-url">copy URL</button>
-      <div id="bbox-info"></div>
     </div>
-    <div id="record-overlay" style="display:none; position:fixed; top:0; left:0; right:0; height:4px; background:#e74c3c; z-index:20; transition:width 0.1s linear;"></div>
-    <div id="record-status" style="display:none; position:fixed; top:14px; right:14px; z-index:20; background:rgba(231,76,60,.9); color:#fff; padding:6px 10px; border-radius:6px; font-size:12px; font-family:ui-monospace,monospace;"></div>
+    <div id="record-overlay"></div>
+    <div id="record-status"></div>
 
     <script type="importmap">
-      {
-        "imports": {
-          "three": "https://esm.sh/three@0.180.0"
-        }
-      }
+      { "imports": { "three": "https://esm.sh/three@0.180.0" } }
     </script>
     <script type="module">
-      // Ported from neilsonnn/image-blaster's FlyController pattern.
-      // Key differences from my earlier attempts:
-      //   - Default flip_y = TRUE (Marble splats need 180° X rotation: Math.PI)
-      //   - No OrbitControls — camera position is updated DIRECTLY each frame
-      //     by reading the key Set and applying a forward/right/up move vector
-      //   - WASD/Q/E/Shift always active (no pointer-lock gating)
-      //   - Mouse-look only when pointer is locked (click to enable, ESC to exit)
-      //   - Smoothed yaw/pitch for non-jittery rotation
+      // Viewer follows World Labs' OWN recipe for Marble worlds, taken verbatim
+      // from worldlabsai/worldlabs-api-examples/web-generate-world + the Spark
+      // docs (loading-splats.md) + Spark's streaming-lod example (which ships
+      // real Marble worlds). The whole thing is 3 facts:
+      //
+      //   1. Marble .spz is OpenCV convention (y-down). Re-orient to OpenGL
+      //      with a 180° rotation about X: splat.quaternion.set(1, 0, 0, 0).
+      //   2. The generation viewpoint IS the splat origin. There is NO camera-
+      //      pose metadata in the world JSON or the .spz. So the camera starts
+      //      at (0,0,0) with identity orientation — that's the original pano
+      //      camera pose, guaranteed inside the room.
+      //   3. SparkControls gives free-fly FPS (WASD + Q/E roll + Shift, drag to
+      //      look). World Labs uses exactly this.
+      //
+      // Everything else this viewer used to do (bbox fitting, "face away from
+      // skew" yaw, floor estimation) was a workaround for NOT knowing the above
+      // and is deleted.
       import * as THREE from "three";
       import * as Spark from "https://esm.sh/@sparkjsdev/spark@2.1.0?deps=three@0.180.0";
-      const { SparkRenderer, SplatMesh } = Spark;
-      console.log("[block-bloc] THREE r" + THREE.REVISION + ", Spark exports:", Object.keys(Spark).length);
+      const { SparkRenderer, SplatMesh, SparkControls } = Spark;
 
-      // --- URL params + UI bindings ---
-      const params = new URLSearchParams(window.location.search);
+      const params = new URLSearchParams(location.search);
       const DEFAULT_SPZ = "https://cdn.marble.worldlabs.ai/bd1c3e7a-e412-4950-bb82-045f95f047a5/0dea05c6-6b15-4d51-bc0d-5f46b5e3df5a_ceramic_500k.spz";
       const spzUrl = params.get("spz") || DEFAULT_SPZ;
       const titleArg = params.get("title");
       if (titleArg) document.getElementById("title").textContent = titleArg;
 
-      // Per image-blaster's WorldViewer.tsx: const flipY = flip_y ?? true
-      let flipY = params.get("flip_y") !== "false";   // DEFAULT TRUE
+      // flip_y defaults TRUE = WL's mandatory OpenCV→OpenGL fix. flip_z is a
+      // debug escape hatch for the rare splat that faces backwards.
+      let flipY = params.get("flip_y") !== "false";
       let flipZ = params.get("flip_z") === "true";
-      let scaleVal = parseFloat(params.get("scale") || "1.0");
-      let yOffset = parseFloat(params.get("y_offset") || "0.0");
 
-      const flipYEl = document.getElementById("flip-y-in"); flipYEl.checked = flipY;
-      const flipZEl = document.getElementById("flip-z-in"); flipZEl.checked = flipZ;
-      const scaleEl = document.getElementById("scale-in"); scaleEl.value = String(scaleVal);
-      const yoffEl  = document.getElementById("yoff-in");  yoffEl.value  = String(yOffset);
+      const statusEl = document.getElementById("status");
 
-      const status   = document.getElementById("status");
-      const bboxInfo = document.getElementById("bbox-info");
-
-      // --- Three + Spark setup ---
-      // preserveDrawingBuffer is required for canvas.toDataURL() to return real
-      // pixels after a render — needed by the headless flythrough recorder
-      // (Playwright's page.screenshot hangs on WebGL surfaces). Tiny perf cost.
-      const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: true });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      // --- Renderer (WL uses antialias:false; we add preserveDrawingBuffer so
+      // the headless recorder can canvas.toDataURL the frames). ---
+      const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.setSize(innerWidth, innerHeight);
       document.body.appendChild(renderer.domElement);
 
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x050507);
 
-      const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-      camera.position.set(0, 1.6, 3);  // placeholder; auto-fit overrides
+      // WL's exact camera init: fov 65, near 0.01, far 1000, AT ORIGIN, identity.
+      const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.01, 1000);
+      camera.position.set(0, 0, 0);
+      camera.quaternion.set(0, 0, 0, 1);
 
       const spark = new SparkRenderer({ renderer });
       scene.add(spark);
 
-      // Per image-blaster's SplatRenderer.tsx — rotation is `Math.PI` (180°)
-      // around the X axis when flipY is true. Position is the groundPlaneOffset
-      // on Y. Scale is metricScaleFactor (default 1).
-      // NOTE: localBbox is declared further below with `let`. We use `var` here
-      // so the temporal-dead-zone doesn't bite when applyTransform() runs at
-      // load time (before the `let` line) — accessing a `let` before its
-      // declaration throws ReferenceError and aborts the whole script.
-      var localBbox = null;
-      const splatGroup = new THREE.Group();
-      const applyTransform = () => {
-        splatGroup.rotation.set(flipY ? Math.PI : 0, flipZ ? Math.PI : 0, 0);
-        splatGroup.position.set(0, yOffset, 0);
-        splatGroup.scale.setScalar(scaleVal);
-        splatGroup.updateMatrixWorld(true);
-        // If we already have a cached local bbox, recompute spawn in the new
-        // world frame (toggling flip_y/flip_z without this leaves the camera
-        // outside the splats).
-        if (localBbox) setSpawnFromBbox(localBbox);
-      };
-      applyTransform();
-      scene.add(splatGroup);
-
       const splat = new SplatMesh({ url: spzUrl });
-      splatGroup.add(splat);
-      window.DEBUG = { THREE, Spark, scene, camera, splat, splatGroup, spark, renderer };
+      function applyOrientation() {
+        // base: OpenCV→OpenGL 180° about X when flipY (the normal case)
+        const q = new THREE.Quaternion();
+        if (flipY) q.set(1, 0, 0, 0);           // 180° about X
+        else q.set(0, 0, 0, 1);                  // identity
+        if (flipZ) {                              // optional extra 180° about Y
+          q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI));
+        }
+        splat.quaternion.copy(q).normalize();
+      }
+      applyOrientation();
+      scene.add(splat);
 
-      // --- FlyController port (no physics, no React) ---
-      // From image-blaster FlyController.tsx:
-      //   SPEED = 6, SHIFT_MULT = 3 → max 18 units/sec
-      //   SMOOTH = 0.12 for yaw/pitch interpolation
-      //   YXZ Euler order (yaw applied first, then pitch)
-      const SPEED = 6;
-      const SHIFT_MULT = 3;
-      const SMOOTH = 0.12;
-      const MOUSE_SENSITIVITY = 0.0025;
+      const controls = new SparkControls({ canvas: renderer.domElement });
 
-      const keys = new Set();
-      let rawYaw = 0, rawPitch = 0;
-      let smoothYaw = 0, smoothPitch = 0;
-      let spawnPos = new THREE.Vector3(0, 1.6, 3);
-      let pointerLocked = false;
-      // localBbox already declared with `var` above to avoid TDZ at script load
-      // Expose for debugging via window.DEBUG
-      window.__keys = keys;
-      window.__lookState = () => ({ rawYaw, rawPitch, smoothYaw, smoothPitch, pointerLocked });
+      // Expose for the headless recorder (render_flythrough.mjs).
+      window.DEBUG = { THREE, Spark, scene, camera, splat, spark, renderer };
+      window.__recording = false;
 
-      const _forward = new THREE.Vector3();
-      const _right = new THREE.Vector3();
-      const _up = new THREE.Vector3(0, 1, 0);
-      const _move = new THREE.Vector3();
-      const _euler = new THREE.Euler(0, 0, 0, "YXZ");
+      // --- Render loop. Skip controls.update while recording so the recorder
+      // can drive the camera pose directly without a fight. ---
+      renderer.setAnimationLoop(() => {
+        if (!window.__recording) controls.update(camera);
+        renderer.render(scene, camera);
+      });
 
-      // localBox is in splat-local space, BEFORE the splatGroup transform.
-      // We must transform it through splatGroup.matrixWorld to get the WORLD
-      // bbox where the camera actually needs to be placed. Without this, the
-      // flip_y rotation (Math.PI around X) leaves the camera outside the
-      // splat geometry along Y and Z.
-      function setSpawnFromBbox(localBox) {
-        localBbox = localBox.clone();
-        splatGroup.updateMatrixWorld(true);
-        const worldBox = localBox.clone().applyMatrix4(splatGroup.matrixWorld);
-        const center = worldBox.getCenter(new THREE.Vector3());
-        const size = worldBox.getSize(new THREE.Vector3());
-
-        // block-bloc pipeline contract: the Blender pano camera was placed at
-        // a known eye-height position INSIDE the room. Marble's splat output
-        // puts the world origin AT that camera location. So (0,0,0) in splat-
-        // world space is, by construction, inside the room at eye level. The
-        // flip_y rotation (Math.PI around X) doesn't move the origin.
-        // We just trust (0,0,0) — no bbox math needed.
-        //
-        // Fallback: if origin is outside the world bbox (could happen for
-        // splats from sources other than our pipeline), fall back to a smart-
-        // floor heuristic centered on bbox center.
-        const originInside =
-          worldBox.min.x <= 0.5 && worldBox.max.x >= -0.5 &&
-          worldBox.min.y <= 0.5 && worldBox.max.y >= -0.5 &&
-          worldBox.min.z <= 0.5 && worldBox.max.z >= -0.5;
-
-        let floorEst;
-        if (originInside) {
-          // Trust the pipeline. Spawn at origin.
-          spawnPos.set(0, 0, 0);
-          floorEst = "origin (pipeline contract)";
-        } else {
-          // Fallback heuristic for non-pipeline splats.
-          const TALL = 3.5, ROOM_H = 2.5;
-          let floorY = worldBox.min.y;
-          let ceilingY = worldBox.max.y;
-          if (size.y > TALL) {
-            floorY = center.y - ROOM_H / 2;
-            ceilingY = center.y + ROOM_H / 2;
-            floorEst = `bbox-fallback (halo-inflated, room ${ROOM_H}m)`;
-          } else {
-            floorEst = "bbox-fallback";
+      // Ready signal for the recorder + status line.
+      let ready = false;
+      const readyPoll = setInterval(() => {
+        try {
+          const box = splat.getBoundingBox();
+          const sz = box.getSize(new THREE.Vector3());
+          if (sz.length() > 0.1 && isFinite(sz.x)) {
+            ready = true;
+            statusEl.innerHTML = `Spark ready · <a href="${spzUrl}" target="_blank">.spz</a> · drag to look, WASD to move`;
+            clearInterval(readyPoll);
           }
-          const eyeY = Math.min(floorY + 1.6, ceilingY - 0.2);
-          spawnPos.set(center.x, eyeY, center.z);
-        }
-        camera.position.copy(spawnPos);
+        } catch {}
+      }, 400);
+      setTimeout(() => clearInterval(readyPoll), 30000);
 
-        // Face AWAY from the bbox-center offset. Marble dreams content beyond
-        // windows/doors (trees, sky), which skews the bbox heavily toward one
-        // side. The bbox center points INTO that dreamed fuzz; the real room
-        // interior is on the opposite side of the spawn. So look opposite.
-        const skew = new THREE.Vector3(center.x - spawnPos.x, 0, center.z - spawnPos.z);
-        if (skew.lengthSq() > 0.25) {
-          const d = skew.normalize().negate();   // away from the dreamed mass
-          rawYaw = Math.atan2(-d.x, -d.z);
-        } else {
-          rawYaw = 0;  // bbox roughly centered on spawn — any direction is fine
-        }
-        rawPitch = 0;
-        smoothYaw = rawYaw;
-        smoothPitch = rawPitch;
-        camera.quaternion.setFromEuler(_euler.set(0, rawYaw, 0));
-        bboxInfo.innerHTML =
-          `world bbox: ${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)} m<br>` +
-          `min: (${worldBox.min.x.toFixed(2)}, ${worldBox.min.y.toFixed(2)}, ${worldBox.min.z.toFixed(2)})<br>` +
-          `max: (${worldBox.max.x.toFixed(2)}, ${worldBox.max.y.toFixed(2)}, ${worldBox.max.z.toFixed(2)})<br>` +
-          `spawn: ${floorEst} → (${spawnPos.x.toFixed(2)}, ${spawnPos.y.toFixed(2)}, ${spawnPos.z.toFixed(2)})`;
+      // --- UI ---
+      const flipYEl = document.getElementById("flip-y-in"); flipYEl.checked = flipY;
+      const flipZEl = document.getElementById("flip-z-in"); flipZEl.checked = flipZ;
+      flipYEl.addEventListener("change", () => { flipY = flipYEl.checked; applyOrientation(); });
+      flipZEl.addEventListener("change", () => { flipZ = flipZEl.checked; applyOrientation(); });
+
+      function backToCapturePose() {
+        camera.position.set(0, 0, 0);
+        camera.quaternion.set(0, 0, 0, 1);
       }
+      document.getElementById("reset-view").addEventListener("click", backToCapturePose);
 
-      function resetToSpawn() {
-        camera.position.copy(spawnPos);
-        rawYaw = 0; rawPitch = 0; smoothYaw = 0; smoothPitch = 0;
-        camera.quaternion.setFromEuler(_euler.set(0, 0, 0));
-      }
-
-      // --- Keyboard ---
-      const onKey = (e) => {
-        // Don't capture keystrokes while typing in inputs
-        const tag = (e.target.tagName || "").toLowerCase();
-        if (tag === "input" || tag === "textarea" || e.target.isContentEditable) {
-          if (e.type === "keyup") keys.delete(e.code);
-          return;
-        }
-        if (e.type === "keydown") keys.add(e.code);
-        else keys.delete(e.code);
-      };
-      window.addEventListener("keydown", onKey);
-      window.addEventListener("keyup", onKey);
-
-      // --- Mouse look (via pointer lock) ---
-      renderer.domElement.addEventListener("click", () => {
-        if (!pointerLocked) renderer.domElement.requestPointerLock();
-      });
-      document.addEventListener("pointerlockchange", () => {
-        pointerLocked = document.pointerLockElement === renderer.domElement;
-        renderer.domElement.classList.toggle("locked", pointerLocked);
-      });
-      document.addEventListener("mousemove", (e) => {
-        if (!pointerLocked) return;
-        rawYaw   -= e.movementX * MOUSE_SENSITIVITY;
-        rawPitch -= e.movementY * MOUSE_SENSITIVITY;
-        rawPitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, rawPitch));
-      });
-
-      // --- UI knobs ---
-      flipYEl.addEventListener("change", () => { flipY = flipYEl.checked; applyTransform(); });
-      flipZEl.addEventListener("change", () => { flipZ = flipZEl.checked; applyTransform(); });
-      scaleEl.addEventListener("input", () => { scaleVal = parseFloat(scaleEl.value) || 1; applyTransform(); });
-      yoffEl.addEventListener("input",  () => { yOffset  = parseFloat(yoffEl.value)  || 0; applyTransform(); });
-      document.getElementById("reset-spawn").addEventListener("click", resetToSpawn);
       document.getElementById("copy-url").addEventListener("click", () => {
         const p = new URLSearchParams();
         p.set("spz", spzUrl);
         if (titleArg) p.set("title", titleArg);
         p.set("flip_y", String(flipY));
         p.set("flip_z", String(flipZ));
-        p.set("scale", String(scaleVal));
-        p.set("y_offset", String(yOffset));
         const u = `${location.origin}${location.pathname}?${p.toString()}`;
         navigator.clipboard.writeText(u);
         const btn = document.getElementById("copy-url");
-        const prev = btn.textContent;
-        btn.textContent = "copied!";
+        const prev = btn.textContent; btn.textContent = "copied!";
         setTimeout(() => { btn.textContent = prev; }, 1200);
       });
 
-      // --- Flythrough recorder ---
-      // Animates the camera on a deterministic trajectory (orbit + slow dolly)
-      // through the bbox center, captures the canvas via MediaRecorder, and
-      // triggers a download of the resulting WebM. ~8 seconds at 30fps.
-      // No external deps; works in any modern browser. ffmpeg/MP4 conversion
-      // can happen offline if needed.
-      const DURATION_SEC = 8;
-      const FPS = 30;
+      // --- Flythrough recorder (interactive / real-browser path) ---
+      // "Camera pose fixed": the camera stays AT the capture origin and does a
+      // 360° turntable look-around with a small drift circle for parallax. This
+      // is exactly the original pano vantage, so it never wanders into the
+      // Marble-dreamed content beyond windows/doors.
+      const DURATION_SEC = 8, FPS = 30, DRIFT = 0.35;
       const recordBtn = document.getElementById("record-flythrough");
-      const recordOverlay = document.getElementById("record-overlay");
-      const recordStatus = document.getElementById("record-status");
+      const overlay = document.getElementById("record-overlay");
+      const recStatus = document.getElementById("record-status");
       let recording = false;
 
-      function pickTrajectory(box) {
-        // 8-second smooth path: enter from the inside corner, slow orbit, end
-        // back near spawn. Yaw sweeps ~270°, slight forward/back dolly,
-        // small head tilt for cinematic feel.
-        const center = box.getCenter(new THREE.Vector3());
-        const size = box.getSize(new THREE.Vector3());
-        const eyeY = center.y + size.y * 0.05;
-        const radius = Math.min(size.x, size.z) * 0.30;
-        const totalFrames = DURATION_SEC * FPS;
-        return Array.from({ length: totalFrames }, (_, i) => {
-          const t = i / (totalFrames - 1);                  // 0..1
-          const easedT = 0.5 - 0.5 * Math.cos(Math.PI * t); // ease-in-out
-          const yaw = -Math.PI / 2 + easedT * Math.PI * 1.5; // sweep 270°
-          const pulseR = radius * (1 + 0.25 * Math.sin(t * Math.PI * 2));
-          return {
-            position: new THREE.Vector3(
-              center.x + Math.cos(yaw) * pulseR,
-              eyeY + size.y * 0.02 * Math.sin(t * Math.PI * 4),  // gentle bob
-              center.z + Math.sin(yaw) * pulseR
-            ),
-            lookAt: new THREE.Vector3(center.x, eyeY - 0.1, center.z),
-          };
-        });
+      // Pose at normalized time t (0..1): position drifts on a small circle
+      // around origin; look direction sweeps a full turn. Returns {pos, quat}.
+      function poseAt(t) {
+        const yaw = t * Math.PI * 2;
+        const px = Math.cos(yaw + Math.PI / 2) * DRIFT;
+        const pz = Math.sin(yaw + Math.PI / 2) * DRIFT;
+        const py = 0.04 * Math.sin(t * Math.PI * 2);
+        const look = new THREE.Vector3(px + Math.sin(yaw) * 3, py - 0.1, pz + Math.cos(yaw) * 3);
+        const m = new THREE.Matrix4().lookAt(new THREE.Vector3(px, py, pz), look, new THREE.Vector3(0, 1, 0));
+        const q = new THREE.Quaternion().setFromRotationMatrix(m);
+        return { pos: [px, py, pz], quat: [q.x, q.y, q.z, q.w] };
       }
+      window.__poseAt = poseAt;  // headless recorder reuses this
 
       async function recordFlythrough() {
-        if (recording) return;
-        if (!localBbox) { alert("splat not loaded yet"); return; }
-        recording = true;
-        recordBtn.disabled = true;
-        recordBtn.textContent = "🎬 recording…";
-        recordStatus.style.display = "";
-        recordOverlay.style.display = "";
+        if (recording || !ready) { if (!ready) alert("splat still loading"); return; }
+        recording = true; window.__recording = true;
+        recordBtn.disabled = true; recordBtn.textContent = "🎬 recording…";
+        recStatus.style.display = ""; overlay.style.display = "";
 
-        // 1. Compute trajectory in WORLD space (splatGroup may be rotated).
-        splatGroup.updateMatrixWorld(true);
-        const worldBox = localBbox.clone().applyMatrix4(splatGroup.matrixWorld);
-        const trajectory = pickTrajectory(worldBox);
-
-        // 2. Set up MediaRecorder on the renderer's canvas.
-        const canvas = renderer.domElement;
-        const stream = canvas.captureStream(FPS);
-        const mimeCandidates = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
-        const mimeType = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || "";
-        const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
+        const stream = renderer.domElement.captureStream(FPS);
+        const mime = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((m) => MediaRecorder.isTypeSupported(m)) || "";
+        const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
         const chunks = [];
-        recorder.ondataavailable = (e) => e.data && e.data.size > 0 && chunks.push(e.data);
+        rec.ondataavailable = (e) => e.data?.size && chunks.push(e.data);
+        rec.start();
 
-        // 3. Drive the camera through the trajectory. Use rAF aligned with our
-        //    animation loop's frame rate. The renderer's setAnimationLoop is
-        //    still running and rendering each frame, so the canvas captureStream
-        //    picks up every frame.
-        recorder.start();
-        const startTime = performance.now();
-        let frameIdx = 0;
-        const frameMs = 1000 / FPS;
-
+        const total = DURATION_SEC * FPS, frameMs = 1000 / FPS, t0 = performance.now();
         await new Promise((resolve) => {
           function step() {
-            const elapsed = performance.now() - startTime;
-            frameIdx = Math.min(trajectory.length - 1, Math.floor(elapsed / frameMs));
-            const t = trajectory[frameIdx];
-            camera.position.copy(t.position);
-            camera.lookAt(t.lookAt);
-            // Sync the yaw/pitch state so when recording stops, OrbitControls
-            // doesn't snap the camera back to the smoothed value.
-            const m = new THREE.Matrix4().lookAt(t.position, t.lookAt, _up);
-            const q = new THREE.Quaternion().setFromRotationMatrix(m);
-            const e = new THREE.Euler().setFromQuaternion(q, "YXZ");
-            rawYaw = smoothYaw = e.y;
-            rawPitch = smoothPitch = e.x;
-            // Update progress bar
-            const pct = frameIdx / (trajectory.length - 1);
-            recordOverlay.style.width = (pct * 100) + "%";
-            recordStatus.textContent = `recording · ${frameIdx + 1} / ${trajectory.length}`;
-            if (frameIdx >= trajectory.length - 1) resolve();
-            else requestAnimationFrame(step);
+            const idx = Math.min(total - 1, Math.floor((performance.now() - t0) / frameMs));
+            const p = poseAt(idx / (total - 1));
+            camera.position.set(...p.pos);
+            camera.quaternion.set(...p.quat);
+            overlay.style.width = (idx / (total - 1) * 100) + "%";
+            recStatus.textContent = `recording · ${idx + 1}/${total}`;
+            if (idx >= total - 1) resolve(); else requestAnimationFrame(step);
           }
           requestAnimationFrame(step);
         });
 
-        // 4. Stop and download.
-        await new Promise((resolve) => {
-          recorder.onstop = resolve;
-          recorder.stop();
-        });
-        const blob = new Blob(chunks, { type: mimeType || "video/webm" });
+        await new Promise((resolve) => { rec.onstop = resolve; rec.stop(); });
+        const blob = new Blob(chunks, { type: mime || "video/webm" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = `${titleArg || "block-bloc-flythrough"}-${Date.now()}.webm`;
+        a.download = `${titleArg || "block-bloc"}-flythrough-${Date.now()}.webm`;
         a.click();
         setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 
-        recordStatus.textContent = `saved · ${(blob.size / 1024 / 1024).toFixed(1)} MB`;
-        recordOverlay.style.display = "none";
-        recordBtn.disabled = false;
-        recordBtn.textContent = "🎬 record flythrough";
-        setTimeout(() => { recordStatus.style.display = "none"; }, 4000);
-        recording = false;
+        recStatus.textContent = `saved · ${(blob.size / 1024 / 1024).toFixed(1)} MB`;
+        overlay.style.display = "none"; recordBtn.disabled = false; recordBtn.textContent = "🎬 record flythrough";
+        setTimeout(() => { recStatus.style.display = "none"; }, 4000);
+        recording = false; window.__recording = false;
+        backToCapturePose();
       }
       recordBtn.addEventListener("click", recordFlythrough);
 
-      // --- Auto-fit using Spark's getBoundingBox() ---
-      let attempts = 0;
-      const fitInterval = setInterval(() => {
-        attempts++;
-        try {
-          const box = splat.getBoundingBox();
-          const sz = box.getSize(new THREE.Vector3());
-          if (sz.length() > 0.1 && isFinite(sz.x)) {
-            setSpawnFromBbox(box);
-            status.innerHTML = `Spark ready · <a href="${spzUrl}" target="_blank">.spz</a> · click to look around`;
-            clearInterval(fitInterval);
-            console.log("[block-bloc] auto-fit done. spawn=", spawnPos.toArray());
-          }
-        } catch {}
-        if (attempts > 60) clearInterval(fitInterval);
-      }, 500);
-
-      // --- Render + update loop (matches FlyController.useFrame) ---
-      const clock = new THREE.Clock();
-      window.__loopState = { frames: 0, lastDelta: 0, lastMove: [0,0,0], keyCount: 0 };
-      renderer.setAnimationLoop(() => {
-        const delta = Math.min(clock.getDelta(), 0.05);
-        window.__loopState.frames++;
-        window.__loopState.lastDelta = delta;
-        window.__loopState.keyCount = keys.size;
-
-        smoothYaw   += (rawYaw   - smoothYaw)   * SMOOTH;
-        smoothPitch += (rawPitch - smoothPitch) * SMOOTH;
-        _euler.set(smoothPitch, smoothYaw, 0);
-        camera.quaternion.setFromEuler(_euler);
-
-        let fwd = 0, strafe = 0, vert = 0;
-        if (keys.has("KeyW") || keys.has("ArrowUp"))    fwd += 1;
-        if (keys.has("KeyS") || keys.has("ArrowDown"))  fwd -= 1;
-        if (keys.has("KeyA") || keys.has("ArrowLeft"))  strafe -= 1;
-        if (keys.has("KeyD") || keys.has("ArrowRight")) strafe += 1;
-        if (keys.has("KeyE")) vert += 1;
-        if (keys.has("KeyQ")) vert -= 1;
-
-        _forward.set(0, 0, -1).applyQuaternion(camera.quaternion);
-        _right.set(1, 0, 0).applyQuaternion(camera.quaternion);
-        _move.set(0, 0, 0)
-          .addScaledVector(_forward, fwd)
-          .addScaledVector(_right, strafe)
-          .addScaledVector(_up, vert);
-        if (_move.lengthSq() > 1) _move.normalize();
-
-        const running = keys.has("ShiftLeft") || keys.has("ShiftRight");
-        const speed = SPEED * (running ? SHIFT_MULT : 1);
-        camera.position.addScaledVector(_move, speed * delta);
-        window.__loopState.lastMove = [_move.x, _move.y, _move.z];
-
-        renderer.render(scene, camera);
-      });
-
-      window.addEventListener("resize", () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
+      addEventListener("resize", () => {
+        camera.aspect = innerWidth / innerHeight;
         camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setSize(innerWidth, innerHeight);
       });
     </script>
   </body>
