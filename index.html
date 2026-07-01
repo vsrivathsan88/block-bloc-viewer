@@ -28,8 +28,21 @@
         font-size: 11px; backdrop-filter: blur(8px); display: flex; flex-direction: column; gap: 4px;
       }
       #adjust label { display: flex; gap: 6px; align-items: center; opacity: .85; }
+      #adjust .modes { display: flex; gap: 4px; margin-bottom: 2px; }
+      #adjust .modes a { color: #9cf; text-decoration: none; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,.08); }
+      #adjust .modes a.active { background: #3576cf; color: #fff; }
       #adjust button { background: rgba(255,255,255,.12); color: #eef; border: none; border-radius: 4px; padding: 4px 8px; font-size: 11px; cursor: pointer; margin-top: 4px; }
       #adjust button:hover { background: rgba(255,255,255,.18); }
+      #walk-overlay {
+        position: fixed; inset: 0; z-index: 15; display: flex; align-items: center; justify-content: center;
+        background: rgba(0,0,0,.35); cursor: pointer;
+      }
+      #walk-overlay .card {
+        background: rgba(0,0,0,.8); border: 1px solid rgba(255,255,255,.15); border-radius: 12px;
+        padding: 22px 30px; text-align: center; font-size: 15px; backdrop-filter: blur(10px);
+      }
+      #walk-overlay .card .sub { font-size: 12px; opacity: .7; margin-top: 8px; }
+      #walk-overlay kbd { background: rgba(255,255,255,.12); padding: 1px 6px; border-radius: 3px; font-family: ui-monospace, monospace; font-size: 12px; }
       #record-overlay { position: fixed; top: 0; left: 0; right: 0; height: 4px; background: #e74c3c; z-index: 20; transition: width .1s linear; display: none; }
       #record-status { position: fixed; top: 14px; right: 14px; z-index: 20; background: rgba(231,76,60,.9); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-family: ui-monospace, monospace; display: none; }
     </style>
@@ -40,21 +53,31 @@
       <div class="title" id="title">living-room</div>
       <div class="status" id="status">Loading splat via Spark…</div>
     </div>
-    <div id="controls">
-      <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Q</kbd>/<kbd>E</kbd> roll · <kbd>⇧</kbd> faster · <kbd>drag</kbd> look
-    </div>
+    <div id="controls"></div>
     <div id="adjust">
+      <div class="modes" id="mode-links"></div>
       <label>flip Y <input type="checkbox" id="flip-y-in" /></label>
       <label>flip Z <input type="checkbox" id="flip-z-in" /></label>
       <button id="reset-view">↵ back to capture pose</button>
       <button id="record-flythrough" style="background:#3576cf;color:#fff">🎬 record flythrough</button>
       <button id="copy-url">copy URL</button>
     </div>
+    <div id="walk-overlay" style="display:none">
+      <div class="card">
+        <div>click to walk</div>
+        <div class="sub"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · mouse look · <kbd>⇧</kbd> run · <kbd>Esc</kbd> exit</div>
+      </div>
+    </div>
     <div id="record-overlay"></div>
     <div id="record-status"></div>
 
     <script type="importmap">
-      { "imports": { "three": "https://esm.sh/three@0.180.0" } }
+      {
+        "imports": {
+          "three": "https://esm.sh/three@0.180.0",
+          "three/addons/": "https://esm.sh/three@0.180.0/examples/jsm/"
+        }
+      }
     </script>
     <script type="module">
       // Viewer follows World Labs' OWN recipe for Marble worlds, taken verbatim
@@ -67,29 +90,55 @@
       //   2. The generation viewpoint IS the splat origin. There is NO camera-
       //      pose metadata in the world JSON or the .spz. So the camera starts
       //      at (0,0,0) with identity orientation — that's the original pano
-      //      camera pose, guaranteed inside the room.
-      //   3. SparkControls gives free-fly FPS (WASD + Q/E roll + Shift, drag to
-      //      look). World Labs uses exactly this.
+      //      camera pose, guaranteed inside the room, at eye height (~1.6 m
+      //      above the floor, per the pipeline's pano render).
+      //   3. Camera modes (?mode=walk|fly|orbit, default walk):
+      //        walk  — hand-rolled pointer-lock FPS: yaw/pitch mouse-look (no
+      //                roll), WASD on the yaw XZ plane, eye height locked at
+      //                y=0 (= capture eye height). Optional &collider=<glb-url>
+      //                enables floor-follow + wall sliding via raycasts.
+      //        fly   — SparkControls free-fly (WASD + drag look + Q/E roll),
+      //                the previous default. What World Labs uses.
+      //        orbit — three.js OrbitControls, inspect-from-a-point mode.
       //
-      // Everything else this viewer used to do (bbox fitting, "face away from
-      // skew" yaw, floor estimation) was a workaround for NOT knowing the above
-      // and is deleted.
+      // NB (TDZ, internal.md note 26): order-sensitive bindings — params, mode,
+      // element refs, walk-state — are all declared at the top of this module,
+      // BEFORE any function that closes over them can possibly run.
       import * as THREE from "three";
       import * as Spark from "https://esm.sh/@sparkjsdev/spark@2.1.0?deps=three@0.180.0";
       const { SparkRenderer, SplatMesh, SparkControls } = Spark;
 
+      // --- URL params (all declared up front — TDZ note 26) ---
       const params = new URLSearchParams(location.search);
       const DEFAULT_SPZ = "https://cdn.marble.worldlabs.ai/bd1c3e7a-e412-4950-bb82-045f95f047a5/0dea05c6-6b15-4d51-bc0d-5f46b5e3df5a_ceramic_500k.spz";
       const spzUrl = params.get("spz") || DEFAULT_SPZ;
       const titleArg = params.get("title");
       if (titleArg) document.getElementById("title").textContent = titleArg;
-
-      // flip_y defaults TRUE = WL's mandatory OpenCV→OpenGL fix. flip_z is a
-      // debug escape hatch for the rare splat that faces backwards.
       let flipY = params.get("flip_y") !== "false";
       let flipZ = params.get("flip_z") === "true";
+      const scaleArg = parseFloat(params.get("scale") || "1") || 1;
+      const yOffsetArg = parseFloat(params.get("y_offset") || "0") || 0;
+      const colliderUrl = params.get("collider");
 
+      // Mode: walk | fly | orbit. Default walk; pointer lock is useless on
+      // touch devices, so they fall back to fly (drag-look works there).
+      const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+      const modeParam = (params.get("mode") || "").toLowerCase();
+      const mode = ["walk", "fly", "orbit"].includes(modeParam) ? modeParam : (isTouch ? "fly" : "walk");
+
+      // --- Element refs (top-level, order-sensitive) ---
       const statusEl = document.getElementById("status");
+      const controlsEl = document.getElementById("controls");
+      const walkOverlay = document.getElementById("walk-overlay");
+      const modeLinksEl = document.getElementById("mode-links");
+
+      // --- Walk-mode state (declared before the render loop closes over it) ---
+      let yaw = 0, pitch = 0;               // radians; pitch clamped ±85°
+      const keys = new Set();
+      const EYE_HEIGHT = 1.6;               // used only with a collider floor hit
+      let eyeY = 0;                          // current eye y (0 = capture height)
+      let colliderMeshes = [];               // raycast targets (empty ⇒ plain walk)
+      let colliderRoot = null;
 
       // --- Renderer (WL uses antialias:false; we add preserveDrawingBuffer so
       // the headless recorder can canvas.toDataURL the frames). ---
@@ -118,25 +167,160 @@
         if (flipZ) {                              // optional extra 180° about Y
           q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI));
         }
-        splat.quaternion.copy(q).normalize();
+        q.normalize();
+        splat.quaternion.copy(q);
+        splat.scale.setScalar(scaleArg);
+        splat.position.y = yOffsetArg;
+        // The collider mesh must live in the SAME frame as the splat.
+        if (colliderRoot) {
+          colliderRoot.quaternion.copy(q);
+          colliderRoot.scale.setScalar(scaleArg);
+          colliderRoot.position.y = yOffsetArg;
+          colliderRoot.updateMatrixWorld(true);
+        }
       }
       applyOrientation();
       scene.add(splat);
 
-      const controls = new SparkControls({ canvas: renderer.domElement });
+      // --- Controls per mode ---
+      // fly: SparkControls, instantiated ONLY in fly mode so its canvas drag
+      // listeners don't fight walk/orbit.
+      let flyControls = null;
+      let orbitControls = null;
+      if (mode === "fly") {
+        flyControls = new SparkControls({ canvas: renderer.domElement });
+      } else if (mode === "orbit") {
+        // three.js addon via the import map (same pinned three@0.180.0).
+        import("three/addons/controls/OrbitControls.js").then(({ OrbitControls }) => {
+          orbitControls = new OrbitControls(camera, renderer.domElement);
+          orbitControls.target.set(0, 0, -2);   // 2 m into the room from capture pose
+          orbitControls.enableDamping = true;
+          orbitControls.update();
+        }).catch((e) => {
+          console.warn("OrbitControls failed to load — falling back to static camera", e);
+          statusEl.textContent = "orbit controls failed to load — reload or use ?mode=walk";
+        });
+      }
+
+      // --- Collider (flag-gated collision stretch; ANY failure ⇒ plain walk) ---
+      if (colliderUrl && mode === "walk") {
+        import("three/addons/loaders/GLTFLoader.js").then(async ({ GLTFLoader }) => {
+          const gltf = await new GLTFLoader().loadAsync(colliderUrl);
+          colliderRoot = gltf.scene;
+          const meshes = [];
+          colliderRoot.traverse((o) => {
+            if (o.isMesh) { o.visible = false; meshes.push(o); }  // invisible; raycasts still hit
+          });
+          scene.add(colliderRoot);
+          applyOrientation();                  // same transform as the splat
+          colliderMeshes = meshes;
+          console.log(`collider loaded: ${meshes.length} mesh(es)`);
+        }).catch((e) => {
+          console.warn("collider load failed — degrading to plain walk", e);
+          colliderMeshes = [];
+        });
+      }
+
+      // --- Walk mode: hand-rolled pointer-lock FPS (~60 LOC, no Spark
+      // FpsMovement/PointerControls). Yaw+pitch only — Euler YXZ is the
+      // body-yaw/head-pitch decomposition, so roll can never accumulate. ---
+      const raycaster = new THREE.Raycaster();
+      const DOWN = new THREE.Vector3(0, -1, 0);
+      function walkUpdate(dt) {
+        camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, "YXZ"));
+        const f = (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0);
+        const s = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
+        if (f || s) {
+          const speed = 1.5 * (keys.has("ShiftLeft") || keys.has("ShiftRight") ? 2 : 1);
+          // Move on the camera-yaw XZ plane (pitch never bleeds into motion).
+          const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+          const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+          const move = fwd.multiplyScalar(f).add(right.multiplyScalar(s)).normalize().multiplyScalar(speed * dt);
+          if (colliderMeshes.length) {
+            try {
+              // Wall blocking: 2 short horizontal rays fanned ±25° around the
+              // move direction. On hit, slide along the wall (remove the
+              // into-wall component) instead of stopping dead.
+              const dir = move.clone().normalize();
+              for (const ang of [0.44, -0.44]) {
+                const rd = dir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), ang);
+                raycaster.set(camera.position, rd);
+                raycaster.far = 0.45;
+                const hit = raycaster.intersectObjects(colliderMeshes, false)[0];
+                if (hit && hit.face) {
+                  const n = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+                  n.y = 0; n.normalize();
+                  move.sub(n.multiplyScalar(move.dot(n)));
+                }
+              }
+            } catch (e) {
+              console.warn("collider raycast failed — disabling collision", e);
+              colliderMeshes = [];
+            }
+          }
+          camera.position.x += move.x;
+          camera.position.z += move.z;
+        }
+        // Floor-follow: downward ray → y = hit + eye height; no hit ⇒ y = 0
+        // (origin = capture eye height per the pipeline contract).
+        if (colliderMeshes.length) {
+          try {
+            raycaster.set(new THREE.Vector3(camera.position.x, eyeY + 0.5, camera.position.z), DOWN);
+            raycaster.far = 5;
+            const hit = raycaster.intersectObjects(colliderMeshes, false)[0];
+            const targetY = hit ? hit.point.y + EYE_HEIGHT : 0;
+            eyeY += (targetY - eyeY) * Math.min(1, dt * 10);   // smooth steps
+          } catch (e) {
+            console.warn("floor raycast failed — disabling collision", e);
+            colliderMeshes = [];
+            eyeY = 0;
+          }
+        } else {
+          eyeY = 0;
+        }
+        camera.position.y = eyeY;
+      }
+
+      // Pointer lock plumbing (walk mode only).
+      if (mode === "walk") {
+        walkOverlay.style.display = "";
+        walkOverlay.addEventListener("click", () => renderer.domElement.requestPointerLock());
+        document.addEventListener("pointerlockchange", () => {
+          const locked = document.pointerLockElement === renderer.domElement;
+          walkOverlay.style.display = locked ? "none" : "";
+        });
+        document.addEventListener("mousemove", (e) => {
+          if (document.pointerLockElement !== renderer.domElement) return;
+          yaw -= e.movementX * 0.0022;
+          pitch = Math.max(-Math.PI * 85 / 180, Math.min(Math.PI * 85 / 180, pitch - e.movementY * 0.0022));
+        });
+        document.addEventListener("keydown", (e) => keys.add(e.code));
+        document.addEventListener("keyup", (e) => keys.delete(e.code));
+        addEventListener("blur", () => keys.clear());
+      }
 
       // Expose for the headless recorder (render_flythrough.mjs).
       window.DEBUG = { THREE, Spark, scene, camera, splat, spark, renderer };
       window.__recording = false;
 
-      // --- Render loop. Skip controls.update while recording so the recorder
+      // --- Render loop. Skip control updates while recording so the recorder
       // can drive the camera pose directly without a fight. ---
-      renderer.setAnimationLoop(() => {
-        if (!window.__recording) controls.update(camera);
+      let prevT = performance.now();
+      renderer.setAnimationLoop((t) => {
+        const dt = Math.min((t - prevT) / 1000, 0.05);
+        prevT = t;
+        if (!window.__recording) {
+          if (mode === "fly" && flyControls) flyControls.update(camera);
+          else if (mode === "orbit" && orbitControls) orbitControls.update();
+          else if (mode === "walk") walkUpdate(dt);
+        }
         renderer.render(scene, camera);
       });
 
-      // Ready signal for the recorder + status line.
+      // Ready signal for the recorder + status line. Spark's getBoundingBox()
+      // (NOT Box3.setFromObject — internal.md note 19) returns LOCAL bounds;
+      // size alone is frame-independent so no matrixWorld needed here. The
+      // recorder applies splat.matrixWorld for the world-space bbox (note 27).
       let ready = false;
       const readyPoll = setInterval(() => {
         try {
@@ -144,12 +328,28 @@
           const sz = box.getSize(new THREE.Vector3());
           if (sz.length() > 0.1 && isFinite(sz.x)) {
             ready = true;
-            statusEl.innerHTML = `Spark ready · <a href="${spzUrl}" target="_blank">.spz</a> · drag to look, WASD to move`;
+            statusEl.innerHTML = `Spark ready · <a href="${spzUrl}" target="_blank">.spz</a>`;
             clearInterval(readyPoll);
           }
         } catch {}
       }, 400);
       setTimeout(() => clearInterval(readyPoll), 30000);
+
+      // --- HUD per mode + mode switcher links ---
+      const HUD = {
+        walk: `<kbd>click</kbd> to walk · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · mouse look · <kbd>⇧</kbd> run · <kbd>Esc</kbd> release`,
+        fly: `<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Q</kbd>/<kbd>E</kbd> roll · <kbd>⇧</kbd> faster · <kbd>drag</kbd> look`,
+        orbit: `<kbd>drag</kbd> orbit · <kbd>scroll</kbd> zoom · <kbd>right-drag</kbd> pan`,
+      };
+      controlsEl.innerHTML = `<b style="text-transform:uppercase;letter-spacing:.1em;font-size:10px;opacity:.6">${mode}</b> · ${HUD[mode]}`;
+      function urlWithMode(m) {
+        const p = new URLSearchParams(location.search);
+        p.set("mode", m);
+        return `${location.pathname}?${p.toString()}`;
+      }
+      modeLinksEl.innerHTML = ["walk", "fly", "orbit"]
+        .map((m) => `<a href="${urlWithMode(m)}" class="${m === mode ? "active" : ""}">${m}</a>`)
+        .join("");
 
       // --- UI ---
       const flipYEl = document.getElementById("flip-y-in"); flipYEl.checked = flipY;
@@ -160,6 +360,8 @@
       function backToCapturePose() {
         camera.position.set(0, 0, 0);
         camera.quaternion.set(0, 0, 0, 1);
+        yaw = 0; pitch = 0; eyeY = 0;
+        if (orbitControls) { orbitControls.target.set(0, 0, -2); orbitControls.update(); }
       }
       document.getElementById("reset-view").addEventListener("click", backToCapturePose);
 
@@ -169,6 +371,10 @@
         if (titleArg) p.set("title", titleArg);
         p.set("flip_y", String(flipY));
         p.set("flip_z", String(flipZ));
+        p.set("mode", mode);
+        if (scaleArg !== 1) p.set("scale", String(scaleArg));
+        if (yOffsetArg !== 0) p.set("y_offset", String(yOffsetArg));
+        if (colliderUrl) p.set("collider", colliderUrl);
         const u = `${location.origin}${location.pathname}?${p.toString()}`;
         navigator.clipboard.writeText(u);
         const btn = document.getElementById("copy-url");
@@ -195,14 +401,14 @@
       // and the lateral drift is enveloped by sin(πt) so it's exactly 0 at both
       // ends. Net: frame 0 = the capture pose, the clip loops cleanly.
       function poseAt(t) {
-        const yaw = t * Math.PI * 2;                 // 0 → 2π, back to facing -Z
-        const drift = DRIFT * Math.sin(Math.PI * t); // 0 at t=0 and t=1, max mid
-        const px = Math.cos(yaw) * drift;
-        const pz = Math.sin(yaw) * drift;
-        const py = 0.03 * Math.sin(Math.PI * t * 2); // subtle bob, 0 at t=0
+        const yawT = t * Math.PI * 2;                 // 0 → 2π, back to facing -Z
+        const drift = DRIFT * Math.sin(Math.PI * t);  // 0 at t=0 and t=1, max mid
+        const px = Math.cos(yawT) * drift;
+        const pz = Math.sin(yawT) * drift;
+        const py = 0.03 * Math.sin(Math.PI * t * 2);  // subtle bob, 0 at t=0
         // Forward(yaw=0) = -Z so frame 0 matches camera identity. As yaw grows,
         // forward sweeps a full turn: (-sin yaw, 0, -cos yaw).
-        const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+        const fx = -Math.sin(yawT), fz = -Math.cos(yawT);
         const look = new THREE.Vector3(px + fx * 3, py - 0.08, pz + fz * 3);
         const m = new THREE.Matrix4().lookAt(new THREE.Vector3(px, py, pz), look, new THREE.Vector3(0, 1, 0));
         const q = new THREE.Quaternion().setFromRotationMatrix(m);
