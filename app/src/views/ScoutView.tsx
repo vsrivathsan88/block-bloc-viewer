@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CapturedFrame } from "../model/types";
-import { allShots, frameById, uid } from "../model/types";
+import { allShots, frameById, newShot, nextShotNumber, uid } from "../model/types";
 import { impliedEndPose } from "../lib/movement";
 import { captureFrame, getViewer, onViewerKey, previewMove, setViewerPose, VIEWER_PATH } from "../lib/viewerBridge";
 import { db } from "../store/db";
@@ -78,19 +78,27 @@ export default function ScoutView({ onOpenShot }: { onOpenShot: (shotId: string)
   }
 
   async function markIn() {
-    if (!active) return;
-    const frame = await captureToLibrary(`SC${active.scene.number}·SH${active.shot.number} IN`);
+    // No shot selected? Marking IN starts one — the frame IS the shot.
+    let target = active;
+    if (!target) {
+      const scene = project.scenes[project.scenes.length - 1];
+      const shot = newShot(nextShotNumber(scene));
+      dispatch({ type: "addShot", sceneId: scene.id, shot });
+      setActiveShotId(shot.id);
+      target = { scene, shot };
+    }
+    const frame = await captureToLibrary(`SC${target.scene.number}·SH${target.shot.number} IN`);
     if (!frame) return;
     dispatch({
       type: "updateShot",
-      shotId: active.shot.id,
+      shotId: target.shot.id,
       patch: {
         frameId: frame.id,
         // the keyframe is always the first anchor; keep any extra anchors
-        contextFrameIds: [frame.id, ...active.shot.contextFrameIds.filter((id) => id !== active.shot.frameId)],
+        contextFrameIds: [frame.id, ...target.shot.contextFrameIds.filter((id) => id !== target.shot.frameId)],
       },
     });
-    flash(`marked IN for ${active.scene.number}·${active.shot.number}`);
+    flash(`marked IN for ${target.scene.number}·${target.shot.number}`);
   }
 
   function markOut() {
@@ -164,74 +172,70 @@ export default function ScoutView({ onOpenShot }: { onOpenShot: (shotId: string)
   return (
     <div className="scout">
       <iframe ref={iframeRef} src={viewerSrc} title="world viewer" />
-      <div className="rail">
-        <h3>Scout · {project.world.title}</h3>
-        <div className="hint">
-          Walk with WASD (click to grab the mouse). Frame the composition, then
-          mark <b>IN</b> — that captures the keyframe <i>and its camera pose</i>{" "}
-          (a spatial anchor). Mark <b>OUT</b> where the move should end.
-          Hotkey: <b>C</b> = mark IN while walking.
+      <div className="rail" style={{ ["--accent-c" as string]: "var(--teal)" }}>
+        <div className="card">
+          <h3 className="section-title">Frame a shot</h3>
+          <div className="hint">
+            Click the world, walk with <b>WASD</b>, frame the composition.
+            Then mark <b>IN</b> — it saves the frame <i>and the camera pose</i>.
+            Hotkey <b>C</b> marks IN while walking.
+          </div>
+          <button className="red big" onClick={markIn}>
+            ● mark IN {active ? `→ SC${active.scene.number}·SH${active.shot.number}` : "→ new shot"}
+          </button>
+          <div className="btn-row">
+            <button className="ghost" onClick={markOut} disabled={!active?.shot.frameId} title="where the camera move ends">
+              ■ mark OUT
+            </button>
+            <button className="ghost" onClick={preview} disabled={!active?.shot.frameId} title="fly the camera from IN to OUT">
+              ▶ preview move
+            </button>
+            <button className="ghost" disabled={!active} onClick={() => active && onOpenShot(active.shot.id)}>
+              ✎ edit shot
+            </button>
+          </div>
+          <label className="field">
+            shot
+            <select
+              value={activeShotId ?? ""}
+              onChange={(e) => setActiveShotId(e.target.value || null)}
+            >
+              <option value="">— new shot on mark IN —</option>
+              {shots.map(({ scene, shot }) => (
+                <option key={shot.id} value={shot.id}>
+                  SC{scene.number} · SH{shot.number} {shot.frameId ? "●" : "○"} {shot.movement}
+                </option>
+              ))}
+            </select>
+          </label>
+          {note && <div className="flash-note">{note}</div>}
         </div>
 
-        <label className="field">
-          active shot
-          <select
-            value={activeShotId ?? ""}
-            onChange={(e) => setActiveShotId(e.target.value || null)}
-          >
-            {shots.map(({ scene, shot }) => (
-              <option key={shot.id} value={shot.id}>
-                SC{scene.number} · SH{shot.number} {shot.frameId ? "●" : "○"} {shot.movement}
-              </option>
+        <div className="card">
+          <h3 className="section-title">Set coverage ({project.frames.length})</h3>
+          <div className="hint">
+            Posed anchors FARM AR conditions on. Bank extra coverage — wide,
+            reverse, detail — then pick anchors per shot in the editor.
+          </div>
+          <div className="btn-row">
+            <button className="teal" onClick={scanSet} disabled={scanning}>
+              {scanning ? "scanning…" : "◌ scan set (8× around)"}
+            </button>
+            <button className="ghost" onClick={() => captureToLibrary(`anchor ${project.frames.length + 1}`)}>
+              + capture one
+            </button>
+          </div>
+          <div className="frame-strip">
+            {[...project.frames].reverse().map((f) => (
+              <FrameChip
+                key={f.id}
+                frame={f}
+                onRename={(label) => dispatch({ type: "renameFrame", frameId: f.id, label })}
+                onDelete={() => dispatch({ type: "deleteFrame", frameId: f.id })}
+                onGoto={() => setViewerPose(iframeRef.current, f.pose)}
+              />
             ))}
-          </select>
-        </label>
-
-        <div className="btn-row">
-          <button onClick={markIn} disabled={!active}>● mark IN</button>
-          <button onClick={markOut} disabled={!active?.shot.frameId}>■ mark OUT</button>
-          <button className="ghost" onClick={preview} disabled={!active?.shot.frameId}>▶ preview move</button>
-        </div>
-        <div className="btn-row">
-          <button
-            className="ghost"
-            onClick={() => {
-              const sceneId = active?.scene.id ?? project.scenes[project.scenes.length - 1].id;
-              dispatch({ type: "addShot", sceneId });
-            }}
-          >
-            + new shot
-          </button>
-          <button className="ghost" disabled={!active} onClick={() => active && onOpenShot(active.shot.id)}>
-            open editor
-          </button>
-        </div>
-        {note && <div className="hint" style={{ color: "var(--red)" }}>{note}</div>}
-
-        <h3>Frame library ({project.frames.length})</h3>
-        <div className="hint">
-          Posed captures — the spatial anchors FARM AR can be conditioned on.
-          Add extra coverage of the set here (wide, reverse, detail), then pick
-          anchors per shot in the editor's context tray.
-        </div>
-        <div className="btn-row">
-          <button className="ghost" onClick={() => captureToLibrary(`anchor ${project.frames.length + 1}`)}>
-            + capture anchor
-          </button>
-          <button className="ghost" onClick={scanSet} disabled={scanning}>
-            {scanning ? "scanning…" : "◌ scan set (8× yaw)"}
-          </button>
-        </div>
-        <div className="frame-strip">
-          {[...project.frames].reverse().map((f) => (
-            <FrameChip
-              key={f.id}
-              frame={f}
-              onRename={(label) => dispatch({ type: "renameFrame", frameId: f.id, label })}
-              onDelete={() => dispatch({ type: "deleteFrame", frameId: f.id })}
-              onGoto={() => setViewerPose(iframeRef.current, f.pose)}
-            />
-          ))}
+          </div>
         </div>
       </div>
     </div>

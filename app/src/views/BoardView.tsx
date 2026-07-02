@@ -1,10 +1,27 @@
 // The board: scenes as rows of pinned panels. Drag to re-cut the sequence.
 
+import { allShots } from "../model/types";
 import { useProject } from "../store/useProject";
 import Panel from "../components/Panel";
 
-export default function BoardView({ onOpenShot }: { onOpenShot: (shotId: string) => void }) {
+export default function BoardView({ onOpenShot, onGoScout }: { onOpenShot: (shotId: string) => void; onGoScout: () => void }) {
   const { project, dispatch } = useProject();
+
+  if (allShots(project).length === 0) {
+    return (
+      <div className="empty-board">
+        <div className="big-hand">Every picture starts with a walk through the set.</div>
+        <div className="steps">
+          <span className="step-pill"><b>1</b> scout the world</span>
+          <span className="step-pill"><b>2</b> mark IN on a composition</span>
+          <span className="step-pill"><b>3</b> panels land here</span>
+        </div>
+        <button className="teal big" style={{ maxWidth: 260 }} onClick={onGoScout}>
+          🥾 go scout the set
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="board">

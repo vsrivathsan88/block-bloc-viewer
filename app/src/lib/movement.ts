@@ -77,6 +77,31 @@ export function kenBurns(movement: Movement): { from: string; to: string } {
   }
 }
 
+/** Color family for UI chips: dolly moves read terracotta, rotations blue,
+ * lateral/vertical travel teal, locked-off ink. */
+export function movementFamily(m: Movement): "dolly" | "pan" | "track" | "still" {
+  switch (m) {
+    case "push-in":
+    case "pull-out":
+    case "dolly-zoom":
+      return "dolly";
+    case "pan-left":
+    case "pan-right":
+    case "tilt-up":
+    case "tilt-down":
+    case "whip-pan":
+      return "pan";
+    case "track-left":
+    case "track-right":
+    case "crane-up":
+    case "crane-down":
+      return "track";
+    case "static":
+    case "handheld":
+      return "still";
+  }
+}
+
 export const MOVEMENT_GLYPH: Record<Movement, string> = {
   "static": "⏺",
   "push-in": "⇥",

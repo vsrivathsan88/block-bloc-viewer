@@ -55,10 +55,10 @@ function MemberCard({ member }: { member: CastMember }) {
   }
 
   return (
-    <div className="center-card" style={{ margin: 0, maxWidth: "none" }}>
-      <div style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+    <div className="card cast-card">
+      <div className="name-row">
         <input
-          style={{ fontFamily: "var(--hand)", fontSize: 18, border: "none", borderBottom: "1px dashed var(--ink-soft)", background: "transparent", flex: 1 }}
+          className="name"
           value={member.name}
           onChange={(e) => patch({ name: e.target.value })}
         />
@@ -68,15 +68,15 @@ function MemberCard({ member }: { member: CastMember }) {
         <textarea rows={2} value={member.description} onChange={(e) => patch({ description: e.target.value })}
           placeholder="Woman in her 40s, long red wool coat, short dark hair." />
       </label>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="ref-row">
         {member.refImageIds.map((id) => (
           <RefThumb key={id} imageId={id}
             onDelete={() => patch({ refImageIds: member.refImageIds.filter((r) => r !== id) })} />
         ))}
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <label className="ghost" style={{ border: "1px solid var(--ink-soft)", padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>
-          upload ref
+        <label className="upload-btn">
+          ⇧ upload ref
           <input type="file" accept="image/*" style={{ display: "none" }}
             onChange={async (e) => {
               const file = e.target.files?.[0];
@@ -87,7 +87,7 @@ function MemberCard({ member }: { member: CastMember }) {
               e.target.value = "";
             }} />
         </label>
-        <button onClick={generateRef} disabled={busy}>
+        <button className="ochre" onClick={generateRef} disabled={busy}>
           {busy ? "generating…" : `⌁ generate ref (${loadEditConfig().provider})`}
         </button>
       </div>
@@ -99,19 +99,22 @@ function MemberCard({ member }: { member: CastMember }) {
 export default function CastView() {
   const { project, dispatch } = useProject();
   return (
-    <div className="board" style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 760 }}>
-      <div className="hint">
-        Characters live here once and get composited into shots in the editor's
-        cast pass. Consistency comes from the reference images — the same refs
-        are sent with every composite.
+    <div className="board">
+      <div className="cast-grid">
+        <div className="hint">
+          Characters live here once and get composited into shots in the
+          editor's cast pass. Consistency comes from the reference images — the
+          same refs are sent with every composite.
+        </div>
+        {project.cast.map((m) => <MemberCard key={m.id} member={m} />)}
+        <button
+          className="ochre"
+          style={{ alignSelf: "flex-start" }}
+          onClick={() => dispatch({ type: "addCastMember", member: { id: uid(), name: `Character ${project.cast.length + 1}`, description: "", refImageIds: [] } })}
+        >
+          + cast member
+        </button>
       </div>
-      {project.cast.map((m) => <MemberCard key={m.id} member={m} />)}
-      <button
-        className="ghost"
-        onClick={() => dispatch({ type: "addCastMember", member: { id: uid(), name: `Character ${project.cast.length + 1}`, description: "", refImageIds: [] } })}
-      >
-        + cast member
-      </button>
     </div>
   );
 }

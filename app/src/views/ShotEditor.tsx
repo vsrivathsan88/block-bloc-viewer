@@ -13,7 +13,7 @@ import {
   submitFarmAr,
 } from "../farm/client";
 import { editImage, loadEditConfig } from "../edit/imageEdit";
-import { impliedEndPose } from "../lib/movement";
+import { impliedEndPose, MOVEMENT_GLYPH, movementFamily } from "../lib/movement";
 import SketchCanvas from "../components/SketchCanvas";
 import { db } from "../store/db";
 import { getImageData, primeImageCache, useImage, useProject } from "../store/useProject";
@@ -183,10 +183,12 @@ export default function ShotEditor({ shotId, onClose }: { shotId: string; onClos
     <div className="editor-overlay" onClick={onClose}>
       <div className="editor" onClick={(e) => e.stopPropagation()}>
         <div className="canvas-side">
-          <h3>SC {scene.number} · SH {shot.number} — sketch the move</h3>
+          <h3 className="section-title" style={{ ["--accent-c" as string]: "var(--red)" }}>
+            SC {scene.number} · SH {shot.number} — sketch the move
+          </h3>
           <div className="toolrow">
-            <button className={tool === "pencil" ? "active" : "ghost"} onClick={() => setTool("pencil")}>✎ pencil</button>
-            <button className={tool === "arrow" ? "active" : "ghost"} onClick={() => setTool("arrow")}>➤ arrow</button>
+            <button className={`ghost ${tool === "pencil" ? "on" : ""}`} onClick={() => setTool("pencil")}>✎ pencil</button>
+            <button className={`ghost ${tool === "arrow" ? "on" : ""}`} onClick={() => setTool("arrow")}>➤ arrow</button>
             {COLORS.map((c) => (
               <span
                 key={c.value}
@@ -205,13 +207,13 @@ export default function ShotEditor({ shotId, onClose }: { shotId: string; onClos
             {img && <img src={img} alt="keyframe" style={{ height: "100%", objectFit: "cover" }} />}
             <SketchCanvas strokes={shot.strokes} tool={tool} color={color} onStrokes={(strokes) => patch({ strokes })} />
           </div>
-          <div className="hint" style={{ marginTop: 8 }}>
+          <div className="hint">
             Arrows are the grammar: where the camera goes, what the subject does.
             {keyframe ? "" : " No keyframe yet — go to Scout and mark IN."}
           </div>
 
-          <h3 style={{ marginTop: 14 }}>Cast pass</h3>
-          <div className="farm-box">
+          <h3 className="section-title" style={{ ["--accent-c" as string]: "var(--ochre)" }}>Cast pass</h3>
+          <div className="accent-box" style={{ ["--accent-c" as string]: "var(--ochre)" }}>
             <div className="hint">
               Composite a character into the clean plate ({loadEditConfig().provider}).
               The cast plate keeps the plate's camera pose, so it replaces the
@@ -224,7 +226,7 @@ export default function ShotEditor({ shotId, onClose }: { shotId: string; onClos
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
-              <button onClick={compositeCast} disabled={!cleanFrame || castBusy}>
+              <button className="ochre" onClick={compositeCast} disabled={!cleanFrame || castBusy}>
                 {castBusy ? "compositing…" : "⌁ composite into plate"}
               </button>
               {castFrame && (
@@ -238,8 +240,8 @@ export default function ShotEditor({ shotId, onClose }: { shotId: string; onClos
             {castNote && <div className="hint" style={{ color: "var(--red)" }}>{castNote}</div>}
           </div>
 
-          <h3 style={{ marginTop: 14 }}>FARM AR</h3>
-          <div className="farm-box">
+          <h3 className="section-title" style={{ ["--accent-c" as string]: "var(--blue)" }}>FARM AR</h3>
+          <div className="accent-box" style={{ ["--accent-c" as string]: "var(--blue)" }}>
             <div className="hint">
               Context anchors (ordered — first anchor is the identity pose the
               generation is anchored to):
@@ -290,7 +292,7 @@ export default function ShotEditor({ shotId, onClose }: { shotId: string; onClos
               onChange={(e) => setPromptOverride(e.target.value)}
             />
             <div className="btn-row" style={{ display: "flex", gap: 6 }}>
-              <button onClick={generate} disabled={!keyframe || shot.farm?.status === "queued" || shot.farm?.status === "running"}>
+              <button className="blue" onClick={generate} disabled={!keyframe || shot.farm?.status === "queued" || shot.farm?.status === "running"}>
                 {loadFarmConfig().mode === "mock" ? "⌁ generate (mock)" : "⌁ generate with FARM AR"}
               </button>
               {promptOverride !== null && (
@@ -330,9 +332,17 @@ export default function ShotEditor({ shotId, onClose }: { shotId: string; onClos
               </select>
             </label>
             <label className="field" style={{ gridColumn: "1 / -1" }}>movement
-              <select value={shot.movement} onChange={(e) => patch({ movement: e.target.value as Shot["movement"] })}>
-                {MOVEMENTS.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
+              <div className="chip-grid">
+                {MOVEMENTS.map((m) => (
+                  <button
+                    key={m}
+                    className={`${movementFamily(m)} ${shot.movement === m ? "on" : ""}`}
+                    onClick={() => patch({ movement: m })}
+                  >
+                    {MOVEMENT_GLYPH[m]} {m}
+                  </button>
+                ))}
+              </div>
             </label>
           </div>
           <label className="field">action

@@ -3,7 +3,7 @@
 
 import type { Project, SceneGroup, Shot } from "../model/types";
 import { displayFrameId, frameById } from "../model/types";
-import { MOVEMENT_GLYPH } from "../lib/movement";
+import { MOVEMENT_GLYPH, movementFamily } from "../lib/movement";
 import { useImage } from "../store/useProject";
 import StrokesSvg from "./StrokesSvg";
 
@@ -45,7 +45,9 @@ export default function Panel({ project, scene, shot, onOpen, draggable, onDragS
       </div>
       <div className="slate">
         <span className="no">{scene.number}·{shot.number}</span>
-        <span className="move">{MOVEMENT_GLYPH[shot.movement]} {shot.movement}</span>
+        <span className={`move-chip ${movementFamily(shot.movement)}`}>
+          {MOVEMENT_GLYPH[shot.movement]} {shot.movement}
+        </span>
         <span className="dur">{shot.lensMm}mm · {shot.durationSec}s</span>
       </div>
     </div>
