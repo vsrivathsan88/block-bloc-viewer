@@ -14,9 +14,13 @@ interface ExportFile {
 
 export async function exportProject(project: Project): Promise<void> {
   const images: Record<string, string> = {};
-  for (const f of project.frames) {
-    const url = await db.getImage(f.imageId);
-    if (url) images[f.imageId] = url;
+  const imageIds = [
+    ...project.frames.map((f) => f.imageId),
+    ...(project.cast ?? []).flatMap((c) => c.refImageIds),
+  ];
+  for (const id of imageIds) {
+    const url = await db.getImage(id);
+    if (url) images[id] = url;
   }
   const file: ExportFile = { format: "shotboard-project", version: 1, project, images };
   const blob = new Blob([JSON.stringify(file)], { type: "application/json" });

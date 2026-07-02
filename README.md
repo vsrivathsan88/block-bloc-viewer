@@ -81,6 +81,10 @@ POST {base}/api/v2/accounts/{acct}/tasks:farmAr
 
 with all cameras re-expressed relative to the first anchor (position + XYZW quaternion, Three.js convention), then polls the task until `video_url` lands. Mock mode (default) needs no network/auth; configure live mode under **⚙ farm** (base URL, account id, bearer token, model slug).
 
+**Initializing from a Marble scene:** a world can't be passed to FARM AR by reference — the public Task API takes only posed pinhole `reference_images` — so the scene enters the context as posed splat renders. Scout's **scan set** button banks 8 yaw-ring anchors at the current pose in one click (run it near the capture origin, where the splat is sharpest). The world's source pano as a single equirect anchor exists only in the internal farm-api context bundle, not the public Task API.
+
+**Characters — the cast pass:** FARM AR has no character primitive, so humans enter through the anchors. The **cast** tab holds characters (description + reference images, uploaded or generated); in the shot editor, a third-party image-edit model (mock / Gemini image / gpt-image-1, configurable in settings) composites a character into the clean plate. Because a 2D edit never moves the camera, the cast plate inherits the clean plate's pose and replaces it as the identity anchor — the same references go into every composite, which is what keeps a character consistent across the board. The cast plate substitutes for (never joins) the clean plate in the context: two views at the same pose with different content is contradictory conditioning.
+
 Projects persist in IndexedDB and round-trip through a self-contained JSON export (`schemas/storyboard.schema.json`).
 
 ```bash

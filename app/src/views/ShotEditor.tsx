@@ -3,8 +3,8 @@
 // user-editable), and generation.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Shot } from "../model/types";
-import { ANGLES, frameById, LENSES, MOVEMENTS } from "../model/types";
+import type { CapturedFrame, Shot } from "../model/types";
+import { ANGLES, frameById, LENSES, MOVEMENTS, uid } from "../model/types";
 import { buildPrompt } from "../farm/prompt";
 import {
   buildFarmArRequest,
@@ -12,9 +12,11 @@ import {
   pollFarmAr,
   submitFarmAr,
 } from "../farm/client";
+import { editImage, loadEditConfig } from "../edit/imageEdit";
 import { impliedEndPose } from "../lib/movement";
 import SketchCanvas from "../components/SketchCanvas";
-import { getImageData, useImage, useProject } from "../store/useProject";
+import { db } from "../store/db";
+import { getImageData, primeImageCache, useImage, useProject } from "../store/useProject";
 
 const COLORS = [
   { name: "graphite", value: "#3d3a35" },
@@ -38,16 +40,27 @@ export default function ShotEditor({ shotId, onClose }: { shotId: string; onClos
   const [color, setColor] = useState(COLORS[0].value);
   const [promptOverride, setPromptOverride] = useState<string | null>(null);
   const [genNote, setGenNote] = useState("");
+  const [castMemberId, setCastMemberId] = useState("");
+  const [castBusy, setCastBusy] = useState(false);
+  const [castNote, setCastNote] = useState("");
   const pollTimer = useRef<number | undefined>(undefined);
 
-  const keyframe = shot ? frameById(project, shot.frameId) : undefined;
+  const cleanFrame = shot ? frameById(project, shot.frameId) : undefined;
+  const castFrame = shot ? frameById(project, shot.castFrameId) : undefined;
+  const keyframe = castFrame ?? cleanFrame; // what we show and anchor on
   const img = useImage(keyframe?.imageId);
   const prompt = shot ? (promptOverride ?? buildPrompt(shot)) : "";
 
-  const contextFrames = useMemo(
-    () => (shot ? shot.contextFrameIds.map((id) => frameById(project, id)).filter((f) => !!f) : []),
-    [shot, project],
-  );
+  // Effective context: the cast plate substitutes for the clean plate as the
+  // anchor (never both — same pose with different content is contradictory
+  // conditioning).
+  const contextFrames = useMemo(() => {
+    if (!shot) return [];
+    return shot.contextFrameIds
+      .map((id) => (id === shot.frameId && shot.castFrameId ? shot.castFrameId : id))
+      .map((id) => frameById(project, id))
+      .filter((f): f is CapturedFrame => !!f);
+  }, [shot, project]);
 
   // resume polling if the shot has an in-flight generation
   useEffect(() => {
@@ -73,6 +86,50 @@ export default function ShotEditor({ shotId, onClose }: { shotId: string; onClos
   if (!shot || !scene) return null;
 
   const patch = (p: Partial<Shot>) => dispatch({ type: "updateShot", shotId: shot.id, patch: p });
+
+  // Cast pass: composite a character into the clean plate. The result is a new
+  // frame in the library with the SAME pose as the clean plate (a 2D edit
+  // never moves the camera), so it's a drop-in anchor replacement.
+  async function compositeCast() {
+    if (!shot || !cleanFrame) return;
+    const member = project.cast.find((c) => c.id === castMemberId);
+    if (!member) return setCastNote("pick a cast member (add them in the cast tab)");
+    setCastBusy(true);
+    setCastNote("");
+    try {
+      const base = await getImageData(cleanFrame.imageId);
+      if (!base) throw new Error("clean plate image missing");
+      const refs = [];
+      for (const rid of member.refImageIds) {
+        const r = await getImageData(rid);
+        if (r) refs.push(r);
+      }
+      const instruction =
+        `Add ${member.name} (${member.description || "see reference"}) into this room, ` +
+        `matching its lighting, perspective and grain exactly. ${shot.action || ""} ` +
+        (refs.length ? "Use the reference image(s) for their exact appearance. " : "") +
+        "Do not change the room, framing or camera.";
+      const dataUrl = await editImage(loadEditConfig(), { base, refs, instruction });
+      const imageId = uid();
+      primeImageCache(imageId, dataUrl);
+      await db.putImage(imageId, dataUrl);
+      const frame: CapturedFrame = {
+        id: uid(),
+        imageId,
+        pose: cleanFrame.pose, // inherited — this is the whole trick
+        fov: cleanFrame.fov,
+        aspect: cleanFrame.aspect,
+        label: `SC${scene!.number}·SH${shot.number} cast: ${member.name}`,
+        capturedAt: Date.now(),
+      };
+      dispatch({ type: "addFrame", frame });
+      patch({ castFrameId: frame.id });
+    } catch (e) {
+      setCastNote(String(e));
+    } finally {
+      setCastBusy(false);
+    }
+  }
 
   async function generate() {
     if (!shot || !keyframe) return;
@@ -151,6 +208,34 @@ export default function ShotEditor({ shotId, onClose }: { shotId: string; onClos
           <div className="hint" style={{ marginTop: 8 }}>
             Arrows are the grammar: where the camera goes, what the subject does.
             {keyframe ? "" : " No keyframe yet — go to Scout and mark IN."}
+          </div>
+
+          <h3 style={{ marginTop: 14 }}>Cast pass</h3>
+          <div className="farm-box">
+            <div className="hint">
+              Composite a character into the clean plate ({loadEditConfig().provider}).
+              The cast plate keeps the plate's camera pose, so it replaces the
+              clean plate as the identity anchor.
+            </div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <select value={castMemberId} onChange={(e) => setCastMemberId(e.target.value)}>
+                <option value="">character…</option>
+                {project.cast.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <button onClick={compositeCast} disabled={!cleanFrame || castBusy}>
+                {castBusy ? "compositing…" : "⌁ composite into plate"}
+              </button>
+              {castFrame && (
+                <button className="ghost" onClick={() => patch({ castFrameId: undefined })}>
+                  ↩ back to clean plate
+                </button>
+              )}
+            </div>
+            {castFrame && <div className="hint">showing cast plate: {castFrame.label}</div>}
+            {!project.cast.length && <div className="hint">no cast yet — add characters in the cast tab</div>}
+            {castNote && <div className="hint" style={{ color: "var(--red)" }}>{castNote}</div>}
           </div>
 
           <h3 style={{ marginTop: 14 }}>FARM AR</h3>

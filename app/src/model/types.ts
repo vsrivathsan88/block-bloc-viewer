@@ -58,6 +58,15 @@ export interface CapturedFrame {
   capturedAt: number;
 }
 
+/** A character in the picture. Reference images keep the character consistent
+ * across every shot's cast pass. */
+export interface CastMember {
+  id: string;
+  name: string;
+  description: string; // wardrobe, age, look — goes into every edit instruction
+  refImageIds: string[];
+}
+
 export type FarmTaskStatus = "queued" | "running" | "done" | "error";
 
 export interface FarmGeneration {
@@ -78,8 +87,13 @@ export interface Shot {
   id: string;
   /** e.g. "3" or "3A" — combined with the scene number for the slate */
   number: string;
-  /** keyframe: id of a CapturedFrame (the marked IN) */
+  /** keyframe: id of a CapturedFrame (the marked IN) — the CLEAN plate */
   frameId?: string;
+  /** cast plate: the clean plate with characters composited in by an image-
+   * edit model. Inherits the clean plate's pose (a 2D edit never moves the
+   * camera), so it stays a valid spatial anchor. When set, it replaces the
+   * clean plate as the identity anchor and on the board. */
+  castFrameId?: string;
   /** marked OUT pose — makes the camera movement literal */
   endPose?: Pose;
   /** ordered FARM AR context anchors; defaults to [frameId] at capture.
@@ -115,6 +129,7 @@ export interface Project {
   world: WorldRef;
   /** the posed frame library — all captures, shared across shots as anchors */
   frames: CapturedFrame[];
+  cast: CastMember[];
   scenes: SceneGroup[];
   createdAt: number;
   updatedAt: number;
@@ -151,6 +166,7 @@ export function newProject(title: string, world: WorldRef): Project {
     title,
     world,
     frames: [],
+    cast: [],
     scenes: [newScene(1)],
     createdAt: now,
     updatedAt: now,
@@ -167,6 +183,17 @@ export function nextShotNumber(scene: SceneGroup): string {
 
 export function frameById(p: Project, id?: string): CapturedFrame | undefined {
   return id ? p.frames.find((f) => f.id === id) : undefined;
+}
+
+/** The frame a shot shows and anchors on: cast plate when present, else the
+ * clean plate. */
+export function displayFrameId(shot: Shot): string | undefined {
+  return shot.castFrameId ?? shot.frameId;
+}
+
+/** Fill fields added after a project was saved (pre-cast exports, etc.). */
+export function normalizeProject(p: Project): Project {
+  return { ...p, frames: p.frames ?? [], cast: p.cast ?? [] };
 }
 
 export function allShots(p: Project): { scene: SceneGroup; shot: Shot }[] {

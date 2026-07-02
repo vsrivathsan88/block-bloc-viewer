@@ -4,7 +4,7 @@
 // This is the Schoonmaker pass — it's about the CUTS.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { allShots, fmtRuntime, frameById, totalRuntime } from "../model/types";
+import { allShots, displayFrameId, fmtRuntime, frameById, totalRuntime } from "../model/types";
 import { kenBurns } from "../lib/movement";
 import { useImage, useProject } from "../store/useProject";
 import StrokesSvg from "../components/StrokesSvg";
@@ -21,7 +21,7 @@ export default function AnimaticView() {
   const shotStart = useRef(0);
 
   const current = shots[idx];
-  const frame = current ? frameById(project, current.shot.frameId) : undefined;
+  const frame = current ? frameById(project, displayFrameId(current.shot)) : undefined;
   const img = useImage(frame?.imageId);
   const video = current?.shot.farm?.videoUrl;
 

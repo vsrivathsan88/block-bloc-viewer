@@ -38,7 +38,7 @@ export default function ShotListView({ onOpenShot }: { onOpenShot: (shotId: stri
               ...scene.shots.map((shot) => (
                 <tr key={shot.id} onClick={() => onOpenShot(shot.id)} style={{ cursor: "pointer" }}>
                   <td>{scene.number}·{shot.number}</td>
-                  <td><Thumb project={project} frameId={shot.frameId} /></td>
+                  <td><Thumb project={project} frameId={shot.castFrameId ?? shot.frameId} /></td>
                   <td>{shot.lensMm}mm</td>
                   <td>{shot.angle}</td>
                   <td>{shot.movement}{shot.endPose ? " (marked)" : ""}</td>

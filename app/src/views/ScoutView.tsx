@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CapturedFrame } from "../model/types";
 import { allShots, frameById, uid } from "../model/types";
 import { impliedEndPose } from "../lib/movement";
-import { captureFrame, onViewerKey, previewMove, setViewerPose, VIEWER_PATH } from "../lib/viewerBridge";
+import { captureFrame, getViewer, onViewerKey, previewMove, setViewerPose, VIEWER_PATH } from "../lib/viewerBridge";
 import { db } from "../store/db";
 import { primeImageCache, useImage, useProject } from "../store/useProject";
 
@@ -101,6 +101,38 @@ export default function ScoutView({ onOpenShot }: { onOpenShot: (shotId: string)
     flash(`marked OUT for ${active.scene.number}·${active.shot.number}`);
   }
 
+  // Scan the set: 8 level yaw stops at the current position → 8 posed anchors
+  // banked into the library. Cheapest possible "initialize FARM context from
+  // the Marble scene" — run it near the capture origin where the splat is
+  // sharpest.
+  const [scanning, setScanning] = useState(false);
+  async function scanSet() {
+    const v = getViewer(iframeRef.current);
+    const w = iframeRef.current?.contentWindow as (Window & { __recording?: boolean }) | null;
+    if (!v || !w) return flash("viewer not ready yet");
+    setScanning(true);
+    w.__recording = true;
+    const p = v.camera.position;
+    const q = v.camera.quaternion;
+    const orig = { position: [p.x, p.y, p.z] as [number, number, number], quaternion: [q.x, q.y, q.z, q.w] as [number, number, number, number] };
+    try {
+      for (let i = 0; i < 8; i++) {
+        const yaw = (i / 8) * Math.PI * 2;
+        setViewerPose(iframeRef.current, {
+          position: orig.position,
+          quaternion: [0, Math.sin(yaw / 2), 0, Math.cos(yaw / 2)],
+        });
+        await new Promise((r) => setTimeout(r, 450)); // let Spark re-sort + render
+        await captureToLibrary(`set ${Math.round((yaw * 180) / Math.PI)}°`);
+      }
+      flash("scanned: 8 anchors banked");
+    } finally {
+      setViewerPose(iframeRef.current, orig);
+      w.__recording = false;
+      setScanning(false);
+    }
+  }
+
   function preview() {
     if (!active) return;
     const frame = frameById(project, active.shot.frameId);
@@ -185,6 +217,9 @@ export default function ScoutView({ onOpenShot }: { onOpenShot: (shotId: string)
         <div className="btn-row">
           <button className="ghost" onClick={() => captureToLibrary(`anchor ${project.frames.length + 1}`)}>
             + capture anchor
+          </button>
+          <button className="ghost" onClick={scanSet} disabled={scanning}>
+            {scanning ? "scanning…" : "◌ scan set (8× yaw)"}
           </button>
         </div>
         <div className="frame-strip">

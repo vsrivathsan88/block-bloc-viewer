@@ -1,8 +1,8 @@
 // Project state: single active project, reducer + IndexedDB persistence.
 
 import { createContext, useContext, useEffect, useReducer, useRef } from "react";
-import type { CapturedFrame, Pose, Project, SceneGroup, Shot } from "../model/types";
-import { newScene, newShot, nextShotNumber, uid } from "../model/types";
+import type { CapturedFrame, CastMember, Pose, Project, SceneGroup, Shot } from "../model/types";
+import { newScene, newShot, nextShotNumber, normalizeProject, uid } from "../model/types";
 import { db } from "./db";
 
 export type Action =
@@ -11,6 +11,9 @@ export type Action =
   | { type: "addFrame"; frame: CapturedFrame }
   | { type: "renameFrame"; frameId: string; label: string }
   | { type: "deleteFrame"; frameId: string }
+  | { type: "addCastMember"; member: CastMember }
+  | { type: "updateCastMember"; memberId: string; patch: Partial<CastMember> }
+  | { type: "deleteCastMember"; memberId: string }
   | { type: "addScene" }
   | { type: "updateScene"; sceneId: string; patch: Partial<SceneGroup> }
   | { type: "deleteScene"; sceneId: string }
@@ -31,7 +34,7 @@ function mapShots(p: Project, shotId: string, fn: (s: Shot) => Shot): Project {
 }
 
 function reducer(state: Project | null, action: Action): Project | null {
-  if (action.type === "load") return action.project;
+  if (action.type === "load") return normalizeProject(action.project);
   if (!state) return state;
   const touch = (p: Project): Project => ({ ...p, updatedAt: Date.now() });
   switch (action.type) {
@@ -53,10 +56,20 @@ function reducer(state: Project | null, action: Action): Project | null {
           shots: sc.shots.map((s) => ({
             ...s,
             frameId: s.frameId === action.frameId ? undefined : s.frameId,
+          castFrameId: s.castFrameId === action.frameId ? undefined : s.castFrameId,
             contextFrameIds: s.contextFrameIds.filter((id) => id !== action.frameId),
           })),
         })),
       });
+    case "addCastMember":
+      return touch({ ...state, cast: [...state.cast, action.member] });
+    case "updateCastMember":
+      return touch({
+        ...state,
+        cast: state.cast.map((c) => (c.id === action.memberId ? { ...c, ...action.patch } : c)),
+      });
+    case "deleteCastMember":
+      return touch({ ...state, cast: state.cast.filter((c) => c.id !== action.memberId) });
     case "addScene":
       return touch({ ...state, scenes: [...state.scenes, newScene(state.scenes.length + 1)] });
     case "updateScene":

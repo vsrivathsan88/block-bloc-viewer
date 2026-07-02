@@ -5,12 +5,13 @@ import { exportProject, importProject } from "./lib/exportImport";
 import { loadLastProject, ProjectContext, useProjectReducer } from "./store/useProject";
 import AnimaticView from "./views/AnimaticView";
 import BoardView from "./views/BoardView";
+import CastView from "./views/CastView";
 import ScoutView from "./views/ScoutView";
 import SettingsModal from "./views/SettingsModal";
 import ShotEditor from "./views/ShotEditor";
 import ShotListView from "./views/ShotListView";
 
-type View = "board" | "scout" | "list" | "animatic";
+type View = "board" | "scout" | "cast" | "list" | "animatic";
 
 // The living-room demo world the viewer defaults to.
 const DEMO_SPZ = "https://cdn.marble.worldlabs.ai/bd1c3e7a-e412-4950-bb82-045f95f047a5/0dea05c6-6b15-4d51-bc0d-5f46b5e3df5a_ceramic_500k.spz";
@@ -79,7 +80,7 @@ export default function App() {
           onChange={(e) => dispatch({ type: "rename", title: e.target.value })}
         />
         <div className="tabs">
-          {(["board", "scout", "list", "animatic"] as View[]).map((v) => (
+          {(["board", "scout", "cast", "list", "animatic"] as View[]).map((v) => (
             <button key={v} className={view === v ? "on" : ""} onClick={() => setView(v)}>
               {v === "list" ? "shot list" : v}
             </button>
@@ -125,6 +126,7 @@ export default function App() {
       <div className="main">
         {view === "board" && <BoardView onOpenShot={openShot} />}
         {view === "scout" && <ScoutView onOpenShot={openShot} />}
+        {view === "cast" && <CastView />}
         {view === "list" && <ShotListView onOpenShot={openShot} />}
         {view === "animatic" && <AnimaticView />}
       </div>

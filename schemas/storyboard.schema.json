@@ -36,6 +36,20 @@
           "description": "Posed frame library — every capture keeps its camera pose (a FARM AR spatial anchor).",
           "items": { "$ref": "#/$defs/capturedFrame" }
         },
+        "cast": {
+          "type": "array",
+          "description": "Characters; reference images keep them consistent across shots' cast passes.",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "description", "refImageIds"],
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "description": { "type": "string" },
+              "refImageIds": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
         "scenes": {
           "type": "array",
           "items": {
@@ -89,7 +103,8 @@
       "properties": {
         "id": { "type": "string" },
         "number": { "type": "string" },
-        "frameId": { "type": "string", "description": "keyframe (marked IN) — id into project.frames" },
+        "frameId": { "type": "string", "description": "keyframe (marked IN) — id into project.frames; the clean plate" },
+        "castFrameId": { "type": "string", "description": "cast plate (characters composited in); inherits the clean plate's pose and replaces it as the identity anchor" },
         "endPose": { "$ref": "#/$defs/pose" },
         "contextFrameIds": {
           "type": "array",

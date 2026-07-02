@@ -2,7 +2,7 @@
 // overlay, slate strip (shot number, movement, duration), FARM status dot.
 
 import type { Project, SceneGroup, Shot } from "../model/types";
-import { frameById } from "../model/types";
+import { displayFrameId, frameById } from "../model/types";
 import { MOVEMENT_GLYPH } from "../lib/movement";
 import { useImage } from "../store/useProject";
 import StrokesSvg from "./StrokesSvg";
@@ -18,7 +18,7 @@ interface Props {
 }
 
 export default function Panel({ project, scene, shot, onOpen, draggable, onDragStart, onDrop }: Props) {
-  const frame = frameById(project, shot.frameId);
+  const frame = frameById(project, displayFrameId(shot));
   const img = useImage(frame?.imageId);
   return (
     <div
