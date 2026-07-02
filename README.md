@@ -66,7 +66,7 @@ A storyboarding app in the Scorsese mold, living at `/storyboard/` (source in `/
 
 The UI is bound to the [open-design](https://github.com/nexu-io/open-design) **lingo** design system (`design-systems/lingo/tokens.css`, vendored verbatim at the top of `app/src/styles.css` with an app-binding layer underneath). Color jobs: red = record/capture, violet = FARM/generate, green = scout, amber = cast pass, slate = shot list; movement chips color by family (dolly/pan/track/static).
 
-- **Scout** — this viewer embedded as a same-origin iframe (driven through the `window.DEBUG` recorder contract). Walk the Marble world, frame a composition, **mark IN** (captures keyframe + camera pose + fov) and optionally **mark OUT**. `C` marks IN without leaving pointer lock. "Preview move" drives the real 3D camera from IN to OUT.
+- **Scout** — this viewer embedded as a same-origin iframe (driven through the `window.DEBUG` recorder contract). Two ways to get shots: the **camera plan** (primary, low-click) — a top-down canvas of the set sized from the splat's world bbox; press to place a camera, pull to aim, release to commit; one **shoot** drives the viewer through every planned camera and captures a take each; an accept/reject **take review** (A/R keys) puts the keepers on the board as shots. Or hand-frame on foot: walk, **mark IN** / **mark OUT** (`C` marks IN in pointer lock), "preview move" flies IN→OUT.
 - **Board** — panels pinned to paper: pencil-filtered keyframes, sketch overlays, slate strips (scene·shot, movement glyph, lens, duration). Drag to re-cut.
 - **Shot editor** — grease-pencil sketch layer (pencil + movement arrows in graphite/red/blue), full shot spec (lens, angle, movement, duration, action/dialogue/notes), FARM AR context tray + generation.
 - **Shot list** — the numbered shooting plan, printable.
@@ -74,14 +74,15 @@ The UI is bound to the [open-design](https://github.com/nexu-io/open-design) **l
 
 ### FARM AR integration
 
-Every capture is a **posed frame** (a spatial anchor). A shot's FARM context is an ordered, user-editable list of anchors — the first anchor is the identity pose the generation is anchored to, matching the `farm_ar` context-bundle contract. The client (`app/src/farm/client.ts`) targets the Marble V2 Task API:
+Every capture is a **posed frame** (a spatial anchor). A shot's FARM context is an ordered, user-editable list of anchors. The client (`app/src/farm/client.ts`) conforms to the canonical spec vendored at [`docs/farm_ar_api_spec.md`](docs/farm_ar_api_spec.md):
 
 ```
-POST {base}/api/v2/accounts/{acct}/tasks:farmAr
-  { prompt, reference_images: [{image_base64, camera}], target_frame_count, target_cameras }
+POST {base}/api/v2/tasks:farmAr        (account-scoped when an acct id is set)
+  { prompt, referenceImages: [{imageBase64, camera}], targetCameras,
+    targetFrameCount, fps, seed, cfg, numSteps, model?, depthScaleFactor? }
 ```
 
-with all cameras re-expressed relative to the first anchor (position + XYZW quaternion, Three.js convention), then polls the task until `video_url` lands. Mock mode (default) needs no network/auth; configure live mode under **⚙ farm** (base URL, account id, bearer token, model slug).
+Cameras are raw Three.js camera-to-world state (pinhole intrinsics fx/fy/cx/cy + XYZW quaternion) — the server converts to OpenCV and normalizes the rig per request. The servable is stateless: the context window is exactly the `referenceImages` sent per call, later positions carry the most weight (the shot's keyframe goes **last**), and the client caps context + targets at the trained 32-frame budget. `depthScaleFactor` (settings) pins metric scale across shots in one world. The task is a long-running Operation polled until `done` → `videoUrl`. Mock mode (default) needs no network/auth; live config under **⚙ farm**.
 
 **Initializing from a Marble scene:** a world can't be passed to FARM AR by reference — the public Task API takes only posed pinhole `reference_images` — so the scene enters the context as posed splat renders. Scout's **scan set** button banks 8 yaw-ring anchors at the current pose in one click (run it near the capture origin, where the splat is sharpest). The world's source pano as a single equirect anchor exists only in the internal farm-api context bundle, not the public Task API.
 

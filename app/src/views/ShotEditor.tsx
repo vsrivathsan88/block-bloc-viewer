@@ -11,6 +11,7 @@ import {
   loadFarmConfig,
   pollFarmAr,
   submitFarmAr,
+  TRAINED_SEQ_BUDGET,
 } from "../farm/client";
 import { editImage, loadEditConfig } from "../edit/imageEdit";
 import { impliedEndPose, MOVEMENT_GLYPH, movementFamily } from "../lib/movement";
@@ -25,7 +26,8 @@ const COLORS = [
 ];
 
 /** Beyond this many anchors, warn about context pollution: stale/redundant
- * views degrade AR rollouts the same way stale turns degrade an LLM chat. */
+ * views degrade AR rollouts the same way stale turns degrade an LLM chat —
+ * and every context view eats into the 32-frame trained sequence budget. */
 const CONTEXT_SOFT_LIMIT = 4;
 
 export default function ShotEditor({ shotId, onClose }: { shotId: string; onClose: () => void }) {
@@ -40,6 +42,7 @@ export default function ShotEditor({ shotId, onClose }: { shotId: string; onClos
   const [color, setColor] = useState(COLORS[0].value);
   const [promptOverride, setPromptOverride] = useState<string | null>(null);
   const [genNote, setGenNote] = useState("");
+  const [genPhase, setGenPhase] = useState("");
   const [castMemberId, setCastMemberId] = useState("");
   const [castBusy, setCastBusy] = useState(false);
   const [castNote, setCastNote] = useState("");
@@ -69,6 +72,7 @@ export default function ShotEditor({ shotId, onClose }: { shotId: string; onClos
     const handle = { taskId: shot.farm.taskId, mock: !!shot.farm.mock };
     const tick = async () => {
       const res = await pollFarmAr(cfg, handle);
+      setGenPhase(res.phase ?? "");
       if (res.status === "done" || res.status === "error") {
         dispatch({
           type: "updateShot",
@@ -150,7 +154,7 @@ export default function ShotEditor({ shotId, onClose }: { shotId: string; onClos
         return;
       }
       const endPose = shot.endPose ?? impliedEndPose(shot.movement, keyframe.pose);
-      const frameCount = Math.min(129, Math.max(9, Math.round(shot.durationSec * cfg.fps)));
+      const frameCount = Math.round(shot.durationSec * cfg.fps);
       const body = buildFarmArRequest({
         prompt,
         contextFrames: ctx,
@@ -158,9 +162,9 @@ export default function ShotEditor({ shotId, onClose }: { shotId: string; onClos
         endPose,
         fovDeg: keyframe.fov,
         frameCount,
-        width: 832,
+        width: Math.round(480 * (keyframe.aspect || 16 / 9)),
         height: 480,
-        model: cfg.model || undefined,
+        cfg,
       });
       const handle = await submitFarmAr(cfg, body);
       patch({
@@ -170,7 +174,7 @@ export default function ShotEditor({ shotId, onClose }: { shotId: string; onClos
           status: "queued",
           prompt,
           contextFrameIds: shot.contextFrameIds,
-          frameCount,
+          frameCount: body.targetFrameCount as number,
           submittedAt: Date.now(),
         },
       });
@@ -243,15 +247,15 @@ export default function ShotEditor({ shotId, onClose }: { shotId: string; onClos
           <h3 className="section-title" style={{ ["--accent-c" as string]: "var(--blue)" }}>FARM AR</h3>
           <div className="accent-box" style={{ ["--accent-c" as string]: "var(--blue)" }}>
             <div className="hint">
-              Context anchors (ordered — first anchor is the identity pose the
-              generation is anchored to):
+              Context anchors, in model-sequence order — later views carry the
+              most weight, so the keyframe sits last:
             </div>
             <div className="context-tray">
               {contextFrames.map((f, i) => (
                 <div className="context-item" key={f.id}>
                   <ContextThumb imageId={f.imageId} />
                   <span className="grow">{f.label}</span>
-                  {i === 0 && <span className="anchor-tag">identity anchor</span>}
+                  {i === contextFrames.length - 1 && <span className="anchor-tag">keyframe · most weight</span>}
                   <button className="ghost" disabled={i === 0} title="move up"
                     onClick={() => {
                       const ids = [...shot.contextFrameIds];
@@ -266,7 +270,12 @@ export default function ShotEditor({ shotId, onClose }: { shotId: string; onClos
                 <select
                   value=""
                   onChange={(e) => {
-                    if (e.target.value) patch({ contextFrameIds: [...shot.contextFrameIds, e.target.value] });
+                    if (!e.target.value) return;
+                    // insert before the keyframe so the keyframe stays last
+                    const ids = [...shot.contextFrameIds];
+                    const at = shot.frameId && ids[ids.length - 1] === shot.frameId ? ids.length - 1 : ids.length;
+                    ids.splice(at, 0, e.target.value);
+                    patch({ contextFrameIds: ids });
                   }}
                 >
                   <option value="">+ add anchor from frame library…</option>
@@ -279,8 +288,11 @@ export default function ShotEditor({ shotId, onClose }: { shotId: string; onClos
               </div>
               {contextFrames.length > CONTEXT_SOFT_LIMIT && (
                 <div className="hint" style={{ color: "var(--red)" }}>
-                  {contextFrames.length} anchors — heavy context can pollute the
-                  rollout. Keep the few views that actually cover this shot.
+                  {contextFrames.length} anchors — heavy context pollutes the
+                  rollout, and it eats the sequence budget: {contextFrames.length}{" "}
+                  context + targets ≤ {TRAINED_SEQ_BUDGET} leaves{" "}
+                  {Math.max(2, TRAINED_SEQ_BUDGET - contextFrames.length)} frames
+                  (~{(Math.max(2, TRAINED_SEQ_BUDGET - contextFrames.length) / loadFarmConfig().fps).toFixed(1)}s).
                 </div>
               )}
             </div>
@@ -302,6 +314,7 @@ export default function ShotEditor({ shotId, onClose }: { shotId: string; onClos
             {shot.farm && (
               <div className="status">
                 task <code>{shot.farm.taskId}</code> — <b>{shot.farm.status}</b>
+                {genPhase && (shot.farm.status === "queued" || shot.farm.status === "running") && ` · ${genPhase}`}
                 {shot.farm.status === "done" && !shot.farm.videoUrl && " (simulated — animatic uses the pencil-test)"}
                 {shot.farm.error && <span style={{ color: "var(--red)" }}> {shot.farm.error}</span>}
               </div>

@@ -18,6 +18,36 @@ export interface ViewerHandles {
     aspect: number;
   };
   renderer: { domElement: HTMLCanvasElement };
+  // present in the real viewer's DEBUG (used opportunistically)
+  THREE?: unknown;
+  splat?: unknown;
+}
+
+/** World-space XZ footprint of the loaded splat (the room), for the camera
+ * plan canvas. Spark's getBoundingBox returns LOCAL bounds; apply matrixWorld
+ * (same recipe as the headless recorder). Null until the splat streams in. */
+export function getWorldBboxXZ(
+  iframe: HTMLIFrameElement | null,
+): { min: [number, number]; max: [number, number] } | null {
+  const v = getViewer(iframe) as (ViewerHandles & {
+    splat?: {
+      getBoundingBox(): { clone(): { applyMatrix4(m: unknown): { min: { x: number; z: number }; max: { x: number; z: number }; getSize(v: { length(): number }): { length(): number } } } };
+      updateMatrixWorld(f: boolean): void;
+      matrixWorld: unknown;
+    };
+    THREE?: { Vector3: new () => { length(): number } };
+  }) | null;
+  if (!v?.splat || !v.THREE) return null;
+  try {
+    const box = v.splat.getBoundingBox();
+    v.splat.updateMatrixWorld(true);
+    const wbox = box.clone().applyMatrix4(v.splat.matrixWorld);
+    const size = wbox.getSize(new v.THREE.Vector3());
+    if (!Number.isFinite(wbox.min.x) || size.length() < 0.1) return null;
+    return { min: [wbox.min.x, wbox.min.z], max: [wbox.max.x, wbox.max.z] };
+  } catch {
+    return null;
+  }
 }
 
 export function getViewer(iframe: HTMLIFrameElement | null): ViewerHandles | null {

@@ -34,16 +34,37 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         <label className="field">model slug (blank = server default)
           <input value={cfg.model} onChange={(e) => set({ model: e.target.value })} placeholder="run09-v1" />
         </label>
-        <label className="field">target cameras per second
-          <input type="number" min={4} max={30} value={cfg.fps}
-            onChange={(e) => set({ fps: Math.min(30, Math.max(4, Number(e.target.value) || 12)) })} />
+        <div className="form-grid">
+          <label className="field">fps (path density + MP4)
+            <input type="number" min={1} max={60} value={cfg.fps}
+              onChange={(e) => set({ fps: Math.min(60, Math.max(1, Number(e.target.value) || 8)) })} />
+          </label>
+          <label className="field">seed
+            <input type="number" min={0} value={cfg.seed}
+              onChange={(e) => set({ seed: Math.max(0, Number(e.target.value) || 0) })} />
+          </label>
+          <label className="field">cfg scale (0–15)
+            <input type="number" min={0} max={15} step={0.5} value={cfg.cfg}
+              onChange={(e) => set({ cfg: Math.min(15, Math.max(0, Number(e.target.value) || 2.5)) })} />
+          </label>
+          <label className="field">diffusion steps (1–100)
+            <input type="number" min={1} max={100} value={cfg.numSteps}
+              onChange={(e) => set({ numSteps: Math.min(100, Math.max(1, Number(e.target.value) || 50)) })} />
+          </label>
+        </div>
+        <label className="field">depth scale factor (blank = derived per request)
+          <input
+            value={cfg.depthScaleFactor ?? ""}
+            placeholder="pin metric scale across shots in one world"
+            onChange={(e) => set({ depthScaleFactor: e.target.value ? Number(e.target.value) || null : null })}
+          />
         </label>
         <div className="hint" style={{ fontSize: 11, lineHeight: 1.5 }}>
-          Request shape: <code>POST /api/v2/accounts/&lt;acct&gt;/tasks:farmAr</code>{" "}
-          with prompt + reference_images (posed context anchors) +
-          target_cameras. All poses are re-anchored so the first context view is
-          the identity, per the context-bundle contract. Token is stored in this
-          browser's localStorage only.
+          Conforms to <code>docs/farm_ar_api_spec.md</code>: camelCase wire
+          names, raw Three.js camera state (server converts + normalizes the
+          rig), context + targets capped at the trained 32-frame budget, MP4
+          assembled at the fps above. Token stays in this browser's
+          localStorage.
         </div>
         <h2 style={{ marginTop: 10 }}>Cast pass (image edit)</h2>
         <label className="field">provider

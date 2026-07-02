@@ -397,8 +397,75 @@ label.field {
 .empty-board .step-pill b { color: var(--red); }
 
 /* ---------- scout ---------- */
-.scout { display: flex; height: 100%; }
+.scout { display: flex; height: 100%; position: relative; }
 .scout iframe { flex: 1; border: none; min-width: 0; background: #050507; }
+
+/* camera plan — floating over the viewer */
+.plan-panel {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 5;
+  width: min(420px, 42%);
+  background: color-mix(in srgb, var(--surface), transparent 6%);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-ring), var(--elev-raised);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  backdrop-filter: blur(6px);
+}
+.plan-panel.closed { width: auto; }
+.plan-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.plan-head button { padding: 2px 10px; font-size: 11px; }
+.plan-canvas {
+  width: 100%;
+  aspect-ratio: 1.25;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  cursor: crosshair;
+  touch-action: none;
+  display: block;
+}
+
+/* take review — full-screen triage */
+.take-review {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(29, 27, 42, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+}
+.take-review .take-slate {
+  color: #cfc8e6;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  display: flex;
+  gap: 14px;
+}
+.take-review .take-slate .pose { color: #8d84a8; }
+.take-review .take-frame {
+  width: min(880px, 90vw);
+  aspect-ratio: 16/9;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: 0 0 0 1px #453d5e, var(--elev-raised);
+  background: #000;
+}
+.take-review .take-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.take-review .take-actions { display: flex; gap: 12px; align-items: center; }
+.take-review .take-actions button.teal { font-size: 15px; padding: 13px 26px; }
+.take-review .take-done { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.take-review .take-done .big { color: #fff; font-family: var(--font-display); font-size: var(--text-xl); }
 .scout .rail {
   width: 330px;
   border-left: 1px solid var(--line);
