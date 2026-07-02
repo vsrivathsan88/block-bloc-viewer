@@ -134,6 +134,7 @@
 
       // --- Walk-mode state (declared before the render loop closes over it) ---
       let yaw = 0, pitch = 0;               // radians; pitch clamped ±85°
+      let userLooked = false;               // once true, never auto-aim
       const keys = new Set();
       const EYE_HEIGHT = 1.6;               // used only with a collider floor hit
       let eyeY = 0;                          // current eye y (0 = capture height)
@@ -291,6 +292,7 @@
         });
         document.addEventListener("mousemove", (e) => {
           if (document.pointerLockElement !== renderer.domElement) return;
+          userLooked = true;
           yaw -= e.movementX * 0.0022;
           pitch = Math.max(-Math.PI * 85 / 180, Math.min(Math.PI * 85 / 180, pitch - e.movementY * 0.0022));
         });
@@ -328,6 +330,22 @@
           const sz = box.getSize(new THREE.Vector3());
           if (sz.length() > 0.1 && isFinite(sz.x)) {
             ready = true;
+            // Aim into the room. The spawn orientation is arbitrary relative
+            // to the splat (you can end up nose-to-wall), so face the
+            // world-space bbox center (local box + matrixWorld, note 27) —
+            // unless the user already looked around or a recorder is driving.
+            try {
+              if (!window.__recording && !userLooked) {
+                splat.updateMatrixWorld(true);
+                const wbox = box.clone().applyMatrix4(splat.matrixWorld);
+                const c = wbox.getCenter(new THREE.Vector3());
+                const dx = c.x - camera.position.x, dz = c.z - camera.position.z;
+                if (Math.hypot(dx, dz) > 0.3) {
+                  if (mode === "walk") { yaw = Math.atan2(-dx, -dz); pitch = 0; }
+                  else if (mode === "fly") camera.lookAt(c.x, camera.position.y, c.z);
+                }
+              }
+            } catch {}
             statusEl.innerHTML = `Spark ready · <a href="${spzUrl}" target="_blank">.spz</a>`;
             clearInterval(readyPoll);
           }
