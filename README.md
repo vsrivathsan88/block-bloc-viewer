@@ -64,7 +64,7 @@ The headless flythrough recorder (`.claude/scripts/api/render_flythrough.mjs` in
 
 A storyboarding app in the Scorsese mold, living at `/storyboard/` (source in `/app`, Vite + React, built output committed so GH Pages serves it next to the viewer). The design north star: camera movement as language, hand-drawn immediacy, shot-list rigor, editing rhythm.
 
-The UI is bound to the [open-design](https://github.com/nexu-io/open-design) **doodle** design system (`design-systems/doodle/tokens.css`, vendored verbatim at the top of `app/src/styles.css` with an app-binding layer underneath). Color jobs: accent orange = capture/primary, success green = scout, info blue = FARM, warn amber = cast pass, ink violet = playback; movement chips color by family (dolly/pan/track/static).
+The UI is bound to the [open-design](https://github.com/nexu-io/open-design) **lingo** design system (`design-systems/lingo/tokens.css`, vendored verbatim at the top of `app/src/styles.css` with an app-binding layer underneath). Color jobs: red = record/capture, violet = FARM/generate, green = scout, amber = cast pass, slate = shot list; movement chips color by family (dolly/pan/track/static).
 
 - **Scout** — this viewer embedded as a same-origin iframe (driven through the `window.DEBUG` recorder contract). Walk the Marble world, frame a composition, **mark IN** (captures keyframe + camera pose + fov) and optionally **mark OUT**. `C` marks IN without leaving pointer lock. "Preview move" drives the real 3D camera from IN to OUT.
 - **Board** — panels pinned to paper: pencil-filtered keyframes, sketch overlays, slate strips (scene·shot, movement glyph, lens, duration). Drag to re-cut.

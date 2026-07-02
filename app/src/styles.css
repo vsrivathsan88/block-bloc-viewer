@@ -1,54 +1,53 @@
-/* Shotboard UI — bound to the open-design "doodle" design system
- * (https://github.com/nexu-io/open-design, design-systems/doodle):
- * sketchbook warmth, soft cards, informal orange accents.
+/* Shotboard UI — bound to the open-design "lingo" design system
+ * (https://github.com/nexu-io/open-design, design-systems/lingo):
+ * soft violet action, warm white surfaces, readable content rows.
  *
- * The :root token block below is doodle's tokens.css verbatim; the app
+ * The :root token block below is lingo's tokens.css verbatim; the app
  * bindings underneath map Shotboard's semantic names onto those tokens.
- * Color jobs (per DESIGN.md color stance): accent orange = capture/record +
- * primary CTA, success green = scout/coverage, info blue = FARM/generate,
- * warn amber = cast pass, ink violet = playback. */
+ * Color jobs: danger red = record/capture (the classic record dot),
+ * accent violet = FARM/generate (the magic), success green = scout,
+ * warn amber = cast pass, ink violet-gray = playback. */
 
 :root {
-  /* ── doodle tokens (verbatim) ─────────────────────────────────── */
-  --bg: #fff8d7;
+  /* ── lingo tokens (verbatim) ──────────────────────────────────── */
+  --bg: #fbf9ff;
   --surface: #ffffff;
-  --surface-warm: #ffef9f;
-  --fg: #1d1836;
-  --fg-2: #4c426c;
-  --muted: #796f91;
-  --meta: #ff6b00;
-  --border: #eadfba;
-  --border-soft: #f5eccd;
-  --accent: #ff6b00;
+  --surface-warm: #f1ecff;
+  --fg: #1d1b2a;
+  --fg-2: #4f4863;
+  --muted: #786f8f;
+  --meta: #6d4aff;
+  --border: #ded7f0;
+  --border-soft: #eee9f8;
+  --accent: #6d4aff;
   --accent-on: #ffffff;
   --accent-hover: color-mix(in oklab, var(--accent), black 8%);
   --accent-active: color-mix(in oklab, var(--accent), black 14%);
-  --success: #2e9d57;
-  --warn: #ffb020;
+  --success: #22a06b;
+  --warn: #e6a700;
   --danger: #e5484d;
-  --font-display: "Comic Sans MS", "Trebuchet MS", sans-serif;
-  --font-body: "Comic Sans MS", "Trebuchet MS", sans-serif;
-  --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --font-display: Inter, system-ui, sans-serif;
+  --font-body: Inter, system-ui, sans-serif;
+  --font-mono: "Roboto Mono", ui-monospace, Menlo, monospace;
   --text-xs: 12px;
   --text-sm: 14px;
   --text-base: 16px;
   --text-lg: 18px;
   --text-xl: 24px;
-  --leading-body: 1.52;
+  --leading-body: 1.55;
   --radius-sm: 10px;
   --radius-md: 16px;
   --radius-lg: 24px;
   --radius-pill: 9999px;
   --elev-flat: none;
   --elev-ring: 0 0 0 1px var(--border);
-  --elev-raised: 0 18px 44px rgba(29, 24, 54, 0.14);
-  --focus-ring: 0 0 0 4px rgba(255, 107, 0, 0.26);
+  --elev-raised: 0 20px 48px rgba(45, 36, 85, 0.12);
+  --focus-ring: 0 0 0 4px rgba(109, 74, 255, 0.24);
   --motion-fast: 150ms;
-  --motion-base: 240ms;
-  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --motion-base: 230ms;
+  --ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
 
   /* ── app bindings ─────────────────────────────────────────────── */
-  --info: #49b6e5; /* doodle primary (DESIGN.md) — FARM / generate */
   --paper: var(--bg);
   --paper-dark: var(--surface-warm);
   --panel-bg: var(--surface);
@@ -56,18 +55,19 @@
   --ink-soft: var(--muted);
   --line: var(--border);
 
-  --red: var(--accent);
-  --red-soft: color-mix(in oklab, var(--accent), white 84%);
+  --red: var(--danger);
+  --red-soft: color-mix(in oklab, var(--danger), white 86%);
   --teal: var(--success);
-  --teal-soft: color-mix(in oklab, var(--success), white 84%);
-  --blue: var(--info);
-  --blue-soft: color-mix(in oklab, var(--info), white 82%);
+  --teal-soft: color-mix(in oklab, var(--success), white 86%);
+  --blue: var(--accent);
+  --blue-soft: color-mix(in oklab, var(--accent), white 86%);
   --ochre: color-mix(in oklab, var(--warn), black 12%);
-  --ochre-soft: color-mix(in oklab, var(--warn), white 80%);
+  --ochre-soft: color-mix(in oklab, var(--warn), white 82%);
   --plum: var(--fg-2);
   --plum-soft: color-mix(in oklab, var(--fg-2), white 84%);
+  --info: var(--accent);
 
-  --shadow: var(--elev-ring), 0 2px 10px rgba(29, 24, 54, 0.08);
+  --shadow: var(--elev-ring), 0 2px 10px rgba(45, 36, 85, 0.07);
   --mono: var(--font-mono);
   --hand: var(--font-display);
   --r: var(--radius-sm);
@@ -110,9 +110,9 @@ button.ghost {
   box-shadow: var(--elev-ring);
 }
 button.ghost:hover { background: var(--border-soft); }
-button.red { background: var(--accent); color: var(--accent-on); }
-button.red:hover { background: var(--accent-hover); }
-button.red:active { background: var(--accent-active); }
+button.red { background: var(--red); color: #fff; }
+button.red:hover { background: color-mix(in oklab, var(--red), black 8%); }
+button.red:active { background: color-mix(in oklab, var(--red), black 14%); }
 button.teal { background: var(--teal); color: #fff; }
 button.teal:hover { background: color-mix(in oklab, var(--teal), black 10%); }
 button.blue { background: var(--blue); color: #fff; }
@@ -201,7 +201,7 @@ label.field {
   gap: 7px;
 }
 .tabs button .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tab-accent, var(--ink)); }
-.tabs button:hover { background: rgba(29, 24, 54, 0.07); }
+.tabs button:hover { background: rgba(29, 27, 42, 0.07); }
 .tabs button.on { background: var(--tab-accent, var(--ink)); color: #fff; }
 .tabs button.on .dot { background: #fff; }
 
@@ -285,7 +285,7 @@ label.field {
   flex: 1;
 }
 .scene-head input:focus { box-shadow: none; }
-.scene-head .scene-no { font-size: 24px; font-family: var(--font-display); color: var(--accent); }
+.scene-head .scene-no { font-size: 24px; font-family: var(--font-display); font-weight: 700; color: var(--red); }
 .panels {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
@@ -309,7 +309,7 @@ label.field {
   position: relative;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
   background:
-    repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(29, 24, 54, 0.04) 6px, rgba(29, 24, 54, 0.04) 7px),
+    repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(29, 27, 42, 0.04) 6px, rgba(29, 27, 42, 0.04) 7px),
     var(--border-soft);
 }
 .panel .img-wrap img.keyframe {
@@ -333,14 +333,14 @@ label.field {
   font-size: 11px;
   border-top: 1px solid var(--border-soft);
 }
-.panel .slate .no { font-family: var(--font-display); font-weight: bold; font-size: 15px; color: var(--accent); min-width: 34px; }
+.panel .slate .no { font-family: var(--font-display); font-weight: 700; font-size: 15px; color: var(--red); min-width: 34px; }
 .panel .slate .dur { margin-left: auto; color: var(--ink-soft); font-family: var(--font-mono); font-size: 10px; }
 .panel .farm-dot {
   position: absolute; top: 8px; right: 8px;
   font-size: 9px; letter-spacing: 0.06em;
   font-family: var(--font-mono);
   padding: 3px 8px; border-radius: var(--radius-pill);
-  background: rgba(29, 24, 54, 0.75); color: #fff;
+  background: rgba(29, 27, 42, 0.75); color: #fff;
 }
 .panel .farm-dot.done { background: var(--info); }
 .panel .farm-dot.error { background: var(--danger); }
@@ -355,7 +355,7 @@ label.field {
   padding: 2px 9px;
   border-radius: var(--radius-pill);
 }
-.move-chip.dolly { background: var(--red-soft); color: var(--accent-active); }
+.move-chip.dolly { background: var(--red-soft); color: color-mix(in oklab, var(--red), black 18%); }
 .move-chip.pan { background: var(--blue-soft); color: color-mix(in oklab, var(--info), black 25%); }
 .move-chip.track { background: var(--teal-soft); color: color-mix(in oklab, var(--teal), black 12%); }
 .move-chip.still { background: var(--border-soft); color: var(--ink-soft); }
@@ -394,7 +394,7 @@ label.field {
   padding: 7px 14px;
   color: var(--ink-soft);
 }
-.empty-board .step-pill b { color: var(--accent); }
+.empty-board .step-pill b { color: var(--red); }
 
 /* ---------- scout ---------- */
 .scout { display: flex; height: 100%; }
@@ -434,7 +434,7 @@ label.field {
 /* ---------- shot editor ---------- */
 .editor-overlay {
   position: fixed; inset: 0; z-index: 40;
-  background: rgba(29, 24, 54, 0.45);
+  background: rgba(29, 27, 42, 0.45);
   display: flex; align-items: center; justify-content: center;
   padding: 24px;
 }
@@ -470,7 +470,7 @@ label.field {
   padding: 5px 11px;
 }
 .chip-grid button:hover { color: var(--ink); background: var(--border-soft); }
-.chip-grid button.on.dolly { background: var(--accent); color: var(--accent-on); box-shadow: none; }
+.chip-grid button.on.dolly { background: var(--red); color: #fff; box-shadow: none; }
 .chip-grid button.on.pan { background: var(--info); color: #fff; box-shadow: none; }
 .chip-grid button.on.track { background: var(--teal); color: #fff; box-shadow: none; }
 .chip-grid button.on.still { background: var(--ink); color: var(--paper); box-shadow: none; }
@@ -622,7 +622,7 @@ label.field {
 
 .modal-overlay {
   position: fixed; inset: 0; z-index: 50;
-  background: rgba(29, 24, 54, 0.45);
+  background: rgba(29, 27, 42, 0.45);
   display: flex; align-items: center; justify-content: center;
   padding: 24px;
 }

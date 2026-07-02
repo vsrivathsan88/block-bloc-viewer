@@ -17,8 +17,8 @@ const TABS: { id: View; label: string; accent: string }[] = [
   { id: "board", label: "board", accent: "var(--red)" },
   { id: "scout", label: "scout", accent: "var(--teal)" },
   { id: "cast", label: "cast", accent: "var(--ochre)" },
-  { id: "list", label: "shot list", accent: "var(--blue)" },
-  { id: "animatic", label: "animatic", accent: "var(--plum)" },
+  { id: "list", label: "shot list", accent: "var(--plum)" },
+  { id: "animatic", label: "animatic", accent: "var(--blue)" },
 ];
 
 // The living-room demo world the viewer defaults to.
