@@ -4,6 +4,8 @@ Public splat viewer for [block-bloc](https://github.com/vsrivathsan88) worlds (s
 
 Renders via **[`@sparkjsdev/spark`](https://github.com/sparkjs-dev/spark)** — World Labs' own Gaussian splat library.
 
+Also home to **Shotboard** (`/storyboard`) — a storyboarding/previz app built on top of this viewer + FARM AR. See [Shotboard](#shotboard-storyboard) below.
+
 ## Usage
 
 `https://vsrivathsan88.github.io/block-bloc-viewer/`
@@ -57,6 +59,35 @@ The metric scale and ground-plane offset are usually fine at `scale=1, y_offset=
 ## Recorder integration
 
 The headless flythrough recorder (`.claude/scripts/api/render_flythrough.mjs` in the main repo) loads this page with `&mode=fly`, sets `window.__recording = true` (which pauses all control updates), and drives `window.DEBUG.camera` frame-by-frame. `preserveDrawingBuffer: true` on the renderer is what makes its `canvas.toDataURL` captures work — don't remove it.
+
+## Shotboard (/storyboard)
+
+A storyboarding app in the Scorsese mold, living at `/storyboard/` (source in `/app`, Vite + React, built output committed so GH Pages serves it next to the viewer). The design north star: camera movement as language, hand-drawn immediacy, shot-list rigor, editing rhythm.
+
+- **Scout** — this viewer embedded as a same-origin iframe (driven through the `window.DEBUG` recorder contract). Walk the Marble world, frame a composition, **mark IN** (captures keyframe + camera pose + fov) and optionally **mark OUT**. `C` marks IN without leaving pointer lock. "Preview move" drives the real 3D camera from IN to OUT.
+- **Board** — panels pinned to paper: pencil-filtered keyframes, sketch overlays, slate strips (scene·shot, movement glyph, lens, duration). Drag to re-cut.
+- **Shot editor** — grease-pencil sketch layer (pencil + movement arrows in graphite/red/blue), full shot spec (lens, angle, movement, duration, action/dialogue/notes), FARM AR context tray + generation.
+- **Shot list** — the numbered shooting plan, printable.
+- **Animatic** — cuts through the board at shot durations; FARM-generated video when present, otherwise a Ken Burns "pencil test" derived from the movement spec.
+
+### FARM AR integration
+
+Every capture is a **posed frame** (a spatial anchor). A shot's FARM context is an ordered, user-editable list of anchors — the first anchor is the identity pose the generation is anchored to, matching the `farm_ar` context-bundle contract. The client (`app/src/farm/client.ts`) targets the Marble V2 Task API:
+
+```
+POST {base}/api/v2/accounts/{acct}/tasks:farmAr
+  { prompt, reference_images: [{image_base64, camera}], target_frame_count, target_cameras }
+```
+
+with all cameras re-expressed relative to the first anchor (position + XYZW quaternion, Three.js convention), then polls the task until `video_url` lands. Mock mode (default) needs no network/auth; configure live mode under **⚙ farm** (base URL, account id, bearer token, model slug).
+
+Projects persist in IndexedDB and round-trip through a self-contained JSON export (`schemas/storyboard.schema.json`).
+
+```bash
+cd app && npm install
+npm run dev     # app on :5173, viewer served same-origin at /viewer.html
+npm run build   # typecheck + build into ../storyboard (commit the output)
+```
 
 ## TODO
 

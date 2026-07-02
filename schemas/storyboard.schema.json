@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vsrivathsan88.github.io/block-bloc-viewer/schemas/storyboard.schema.json",
+  "title": "Shotboard project export",
+  "description": "Self-contained storyboard project (images inlined as data URLs). Produced/consumed by the /storyboard app's export & import.",
+  "type": "object",
+  "required": ["format", "version", "project", "images"],
+  "properties": {
+    "format": { "const": "shotboard-project" },
+    "version": { "const": 1 },
+    "images": {
+      "type": "object",
+      "description": "imageId → data URL (image/jpeg)",
+      "additionalProperties": { "type": "string", "pattern": "^data:image/" }
+    },
+    "project": {
+      "type": "object",
+      "required": ["id", "title", "world", "frames", "scenes", "version"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "version": { "const": 1 },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "world": {
+          "type": "object",
+          "required": ["spzUrl", "title"],
+          "properties": {
+            "spzUrl": { "type": "string", "format": "uri" },
+            "colliderUrl": { "type": "string", "format": "uri" },
+            "title": { "type": "string" }
+          }
+        },
+        "frames": {
+          "type": "array",
+          "description": "Posed frame library — every capture keeps its camera pose (a FARM AR spatial anchor).",
+          "items": { "$ref": "#/$defs/capturedFrame" }
+        },
+        "scenes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "number", "heading", "shots"],
+            "properties": {
+              "id": { "type": "string" },
+              "number": { "type": "integer" },
+              "heading": { "type": "string" },
+              "shots": { "type": "array", "items": { "$ref": "#/$defs/shot" } }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "vec3": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+    "quat": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 4,
+      "maxItems": 4,
+      "description": "XYZW quaternion, Three.js convention"
+    },
+    "pose": {
+      "type": "object",
+      "required": ["position", "quaternion"],
+      "description": "Camera-to-world transform in the splat-world frame (Three.js: Y-up, Z-backward)",
+      "properties": {
+        "position": { "$ref": "#/$defs/vec3" },
+        "quaternion": { "$ref": "#/$defs/quat" }
+      }
+    },
+    "capturedFrame": {
+      "type": "object",
+      "required": ["id", "imageId", "pose", "fov", "aspect", "label", "capturedAt"],
+      "properties": {
+        "id": { "type": "string" },
+        "imageId": { "type": "string" },
+        "pose": { "$ref": "#/$defs/pose" },
+        "fov": { "type": "number", "description": "vertical fov, degrees" },
+        "aspect": { "type": "number" },
+        "label": { "type": "string" },
+        "capturedAt": { "type": "number" }
+      }
+    },
+    "shot": {
+      "type": "object",
+      "required": ["id", "number", "contextFrameIds", "lensMm", "angle", "movement", "durationSec", "action", "dialogue", "notes", "strokes"],
+      "properties": {
+        "id": { "type": "string" },
+        "number": { "type": "string" },
+        "frameId": { "type": "string", "description": "keyframe (marked IN) — id into project.frames" },
+        "endPose": { "$ref": "#/$defs/pose" },
+        "contextFrameIds": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Ordered FARM AR context anchors (frame ids). The first anchor becomes the identity pose of the generation."
+        },
+        "lensMm": { "type": "number" },
+        "angle": { "enum": ["eye-level", "low", "high", "overhead", "dutch", "pov"] },
+        "movement": {
+          "enum": ["static", "push-in", "pull-out", "pan-left", "pan-right", "tilt-up", "tilt-down", "track-left", "track-right", "crane-up", "crane-down", "dolly-zoom", "whip-pan", "handheld"]
+        },
+        "durationSec": { "type": "number", "exclusiveMinimum": 0 },
+        "action": { "type": "string" },
+        "dialogue": { "type": "string" },
+        "notes": { "type": "string" },
+        "strokes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["tool", "color", "width", "points"],
+            "properties": {
+              "tool": { "enum": ["pencil", "arrow"] },
+              "color": { "type": "string" },
+              "width": { "type": "number" },
+              "points": {
+                "type": "array",
+                "items": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+                "description": "normalized 0..1 panel coordinates"
+              }
+            }
+          }
+        },
+        "farm": {
+          "type": "object",
+          "required": ["taskId", "status", "prompt", "contextFrameIds", "frameCount", "submittedAt"],
+          "properties": {
+            "taskId": { "type": "string" },
+            "status": { "enum": ["queued", "running", "done", "error"] },
+            "prompt": { "type": "string" },
+            "contextFrameIds": { "type": "array", "items": { "type": "string" } },
+            "frameCount": { "type": "integer" },
+            "videoUrl": { "type": "string" },
+            "error": { "type": "string" },
+            "submittedAt": { "type": "number" },
+            "mock": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  }
+}
