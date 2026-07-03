@@ -25,10 +25,14 @@ export interface ViewerHandles {
 
 /** World-space XZ footprint of the loaded splat (the room), for the camera
  * plan canvas. Spark's getBoundingBox returns LOCAL bounds; apply matrixWorld
- * (same recipe as the headless recorder). Null until the splat streams in. */
+ * (same recipe as the headless recorder). Null until the splat streams in.
+ * The demo viewer short-circuits this by publishing DEBUG.worldBboxXZ. */
 export function getWorldBboxXZ(
   iframe: HTMLIFrameElement | null,
 ): { min: [number, number]; max: [number, number] } | null {
+  const direct = (iframe?.contentWindow as (Window & { DEBUG?: { worldBboxXZ?: { min: [number, number]; max: [number, number] } } }) | null)
+    ?.DEBUG?.worldBboxXZ;
+  if (direct) return direct;
   const v = getViewer(iframe) as (ViewerHandles & {
     splat?: {
       getBoundingBox(): { clone(): { applyMatrix4(m: unknown): { min: { x: number; z: number }; max: { x: number; z: number }; getSize(v: { length(): number }): { length(): number } } } };

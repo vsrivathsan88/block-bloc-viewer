@@ -20,6 +20,7 @@ import {
   VIEWER_PATH,
 } from "../lib/viewerBridge";
 import { db } from "../store/db";
+import { DEMO_MODE, DEMO_VIEWER_HTML } from "../lib/demoViewer";
 import { primeImageCache, useImage, useProject } from "../store/useProject";
 import PlanCanvas, { type BboxXZ, type PlannedCam, type ShotMark, yawOfQuat, yawQuat } from "../components/PlanCanvas";
 import TakeReview, { type Take } from "../components/TakeReview";
@@ -275,7 +276,11 @@ export default function ScoutView({ onOpenShot }: { onOpenShot: (shotId: string)
 
   return (
     <div className="scout">
-      <iframe ref={iframeRef} src={viewerSrc} title="world viewer" />
+      {DEMO_MODE ? (
+        <iframe ref={iframeRef} srcDoc={DEMO_VIEWER_HTML} title="demo world" />
+      ) : (
+        <iframe ref={iframeRef} src={viewerSrc} title="world viewer" />
+      )}
 
       <div className={`plan-panel ${planOpen ? "" : "closed"}`}>
         <div className="plan-head">
