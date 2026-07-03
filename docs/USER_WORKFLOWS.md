@@ -23,8 +23,9 @@ W2 coverage             W4 walk & mark              W5 cast pass (3P edit)
 **APIs:** none (Marble CDN implicitly, via the viewer).
 **Friction / gaps:**
 - No world picker from the user's Marble account — URLs are pasted by hand.
-- No path for worlds that don't exist yet. *Planned: "dream a set" — FARM T2I
-  image → identity anchor (or → image-to-world → real splat).*
+- No path for worlds that don't exist yet. *Planned: greybox blockout →
+  depth pano → `tasks:depthPano2DraftSplats` (Chisel `x2p-chisel-v1` + L3RM)
+  → draft splat world; or `tasks:farmT2i` image as a single identity anchor.*
 
 ### W2 · Bank coverage (spatial context)
 **Flow:** Scout → `scan set` (8-stop yaw ring, one click) and/or `+ capture one`.
@@ -119,7 +120,7 @@ flythrough recorder); no share link.
 | API | Used today | Where | Next natural use |
 |---|---|---|---|
 | FARM AR (`tasks:farmAr`) | ✅ live mode | W7 per-shot generate | batch generate + seeded retakes (W7) |
-| FARM T2I (`tasks:farmT2i`) | ❌ | — | cast refs (W5), dream-a-set (W1) |
+| FARM T2I (`tasks:farmT2i`) | ❌ | — | cast refs (W5), greybox → depthPano2DraftSplats (W1) |
 | 3P image edit (NB / gpt-image-1) | ✅ | W5 compositing | props, seed variations |
 | Marble CDN / viewer | ✅ | W1–W4 rendering + poses | world picker from account (W1) |
 
@@ -132,4 +133,4 @@ flythrough recorder); no share link.
    client addition.
 3. **W6 prompt gating** — only send action text when a cast plate exists.
 4. **W8 animatic export** — the shareable deliverable of the whole app.
-5. **W1 dream-a-set** — T2I → anchor (or → world) for unbuilt sets.
+5. **W1 greybox → world** — blockout → depth pano → `tasks:depthPano2DraftSplats` for unbuilt sets.

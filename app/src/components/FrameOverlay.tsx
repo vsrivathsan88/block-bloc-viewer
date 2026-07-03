@@ -6,6 +6,7 @@ import type { CapturedFrame, CastMember, Shot } from "../model/types";
 import { frameById, MOVEMENTS, uid } from "../model/types";
 import { buildPrompt } from "../farm/prompt";
 import { buildFarmArRequest, loadFarmConfig, submitFarmAr } from "../farm/client";
+import { loadMarbleConfig } from "../marble/client";
 import { editImage, loadEditConfig } from "../edit/imageEdit";
 import { impliedEndPose, MOVEMENT_GLYPH, movementFamily } from "../lib/movement";
 import { autoContextIds } from "../lib/inference";
@@ -109,7 +110,7 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
   async function generate() {
     if (!shot || !keyframe || !cleanFrame) return;
     const cfg = loadFarmConfig();
-    if (cfg.mode === "live" && !cfg.token) return setNote("live mode needs a token — open settings");
+    if (cfg.mode === "live" && !loadMarbleConfig().token) return setNote("live mode needs a token — open settings");
     try {
       setNote("");
       // auto context: nearest anchors + keyframe last; cast plate substitutes

@@ -3,12 +3,15 @@
 
 import { useState } from "react";
 import { loadFarmConfig, saveFarmConfig, type FarmConfig } from "../farm/client";
+import { loadMarbleConfig, MARBLE_TASKS, saveMarbleConfig, type MarbleConfig } from "../marble/client";
 import { loadEditConfig, saveEditConfig, type EditConfig } from "../edit/imageEdit";
 import { useProject } from "../store/useProject";
 
 export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const { project, dispatch } = useProject();
   const [world, setWorld] = useState(project.world);
+  const [marble, setMarble] = useState<MarbleConfig>(loadMarbleConfig());
+  const setM = (patch: Partial<MarbleConfig>) => setMarble({ ...marble, ...patch });
   const [cfg, setCfg] = useState<FarmConfig>(loadFarmConfig());
   const set = (patch: Partial<FarmConfig>) => setCfg({ ...cfg, ...patch });
   const [edit, setEdit] = useState<EditConfig>(loadEditConfig());
@@ -28,22 +31,36 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           <input value={world.colliderUrl ?? ""} onChange={(e) => setWorld({ ...world, colliderUrl: e.target.value || undefined })} />
         </label>
 
+        <h2 style={{ marginTop: 10 }}>Marble API</h2>
+        <label className="field">default base URL
+          <input value={marble.baseUrl} onChange={(e) => setM({ baseUrl: e.target.value })}
+            placeholder="https://marble4-autopush.worldlabs.ai" />
+        </label>
+        <div className="form-grid">
+          <label className="field">account id
+            <input value={marble.accountId} onChange={(e) => setM({ accountId: e.target.value })} placeholder="acct_…" />
+          </label>
+          <label className="field">bearer token
+            <input type="password" value={marble.token} onChange={(e) => setM({ token: e.target.value })} />
+          </label>
+        </div>
+        <div className="hint">Per-task endpoint overrides — capabilities are deployed on different hosts; blank uses the default.</div>
+        {MARBLE_TASKS.map((t) => (
+          <label className="field" key={t}>tasks:{t}
+            <input
+              value={marble.endpoints[t] ?? ""}
+              placeholder="(default host)"
+              onChange={(e) => setM({ endpoints: { ...marble.endpoints, [t]: e.target.value || undefined } })}
+            />
+          </label>
+        ))}
+
         <h2 style={{ marginTop: 10 }}>FARM AR</h2>
         <label className="field">mode
           <select value={cfg.mode} onChange={(e) => set({ mode: e.target.value as FarmConfig["mode"] })}>
             <option value="mock">mock — no network, animatic uses pencil-test</option>
-            <option value="live">live — Marble V2 Task API (tasks:farmAr)</option>
+            <option value="live">live — tasks:farmAr</option>
           </select>
-        </label>
-        <label className="field">base URL
-          <input value={cfg.baseUrl} onChange={(e) => set({ baseUrl: e.target.value })}
-            placeholder="https://marble4-autopush.worldlabs.ai" />
-        </label>
-        <label className="field">account id
-          <input value={cfg.accountId} onChange={(e) => set({ accountId: e.target.value })} placeholder="acct_…" />
-        </label>
-        <label className="field">bearer token (Clerk JWT / API key)
-          <input type="password" value={cfg.token} onChange={(e) => set({ token: e.target.value })} />
         </label>
         <label className="field">model slug (blank = server default)
           <input value={cfg.model} onChange={(e) => set({ model: e.target.value })} placeholder="run09-v1" />
@@ -101,6 +118,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => {
+            saveMarbleConfig(marble);
             saveFarmConfig(cfg);
             saveEditConfig(edit);
             if (JSON.stringify(world) !== JSON.stringify(project.world)) dispatch({ type: "updateWorld", world });
