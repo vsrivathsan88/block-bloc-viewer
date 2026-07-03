@@ -79,6 +79,8 @@ export interface FarmGeneration {
   frameCount: number;
   videoUrl?: string; // assembled MP4 preview when done
   error?: string;
+  /** live progress phase: staging / generating / assembling */
+  phase?: string;
   submittedAt: number;
   mock?: boolean;
 }

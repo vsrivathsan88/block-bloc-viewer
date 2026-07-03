@@ -1,8 +1,9 @@
-// Triage the takes: one big frame at a time — accept it onto the board or
-// toss it. Keyboard: A / Enter = accept, R / Backspace = reject, Esc = done.
+// Triage the takes: one frame at a time. ✓ keeps it on the board, ✗ tosses.
+// Keys: A/Enter accept · R/Backspace reject · Esc finish.
 
 import { useEffect, useState } from "react";
 import type { Pose } from "../model/types";
+import { IconCheck, IconClose } from "./icons";
 
 export interface Take {
   dataUrl: string;
@@ -44,36 +45,25 @@ export default function TakeReview({ takes, onAccept, onClose }: Props) {
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idx, takes]);
+  }, [idx, takes, done]);
 
   return (
     <div className="take-review">
       {done ? (
         <div className="take-done">
-          <div className="big">{accepted ? `${accepted} shot${accepted === 1 ? "" : "s"} on the board 🎬` : "no takes kept"}</div>
-          <button className="red big" style={{ maxWidth: 240 }} onClick={onClose} autoFocus>done</button>
+          <div className="big">{accepted ? `+${accepted} 🎬` : "—"}</div>
+          <button className="ib big-ib" title="done" onClick={onClose} autoFocus><IconCheck /></button>
         </div>
       ) : (
         <>
-          <div className="take-slate">
-            take {idx + 1} / {takes.length}
-            <span className="pose">
-              [{take.pose.position.map((n) => n.toFixed(1)).join(", ")}]
-            </span>
-          </div>
+          <div className="take-slate">{idx + 1} / {takes.length}</div>
           <div className="take-frame">
-            <img src={take.dataUrl} alt={`take ${idx + 1}`} />
+            <img src={take.dataUrl} alt="" />
           </div>
           <div className="take-actions">
-            <button className="ghost" onClick={reject} title="R / Backspace">✗ toss</button>
-            <button className="teal big" style={{ maxWidth: 280 }} onClick={accept} title="A / Enter" autoFocus>
-              ✓ add to board
-            </button>
-            <button className="ghost" onClick={() => { for (let i = idx; i < takes.length; i++) onAccept(takes[i]); setAccepted(accepted + takes.length - idx); setIdx(takes.length); }}>
-              accept all
-            </button>
+            <button className="ib big-ib toss" title="toss (R)" onClick={reject}><IconClose /></button>
+            <button className="ib big-ib keep" title="keep (A)" onClick={accept} autoFocus><IconCheck /></button>
           </div>
-          <div className="hint" style={{ color: "var(--muted)" }}>A accept · R reject · Esc finish</div>
         </>
       )}
     </div>

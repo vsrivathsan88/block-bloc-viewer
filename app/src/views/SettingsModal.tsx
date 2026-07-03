@@ -4,8 +4,11 @@
 import { useState } from "react";
 import { loadFarmConfig, saveFarmConfig, type FarmConfig } from "../farm/client";
 import { loadEditConfig, saveEditConfig, type EditConfig } from "../edit/imageEdit";
+import { useProject } from "../store/useProject";
 
 export default function SettingsModal({ onClose }: { onClose: () => void }) {
+  const { project, dispatch } = useProject();
+  const [world, setWorld] = useState(project.world);
   const [cfg, setCfg] = useState<FarmConfig>(loadFarmConfig());
   const set = (patch: Partial<FarmConfig>) => setCfg({ ...cfg, ...patch });
   const [edit, setEdit] = useState<EditConfig>(loadEditConfig());
@@ -14,7 +17,18 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>FARM AR settings</h2>
+        <h2>World</h2>
+        <label className="field">name
+          <input value={world.title} onChange={(e) => setWorld({ ...world, title: e.target.value })} />
+        </label>
+        <label className="field">.spz URL
+          <input value={world.spzUrl} onChange={(e) => setWorld({ ...world, spzUrl: e.target.value })} />
+        </label>
+        <label className="field">collider GLB URL (optional)
+          <input value={world.colliderUrl ?? ""} onChange={(e) => setWorld({ ...world, colliderUrl: e.target.value || undefined })} />
+        </label>
+
+        <h2 style={{ marginTop: 10 }}>FARM AR</h2>
         <label className="field">mode
           <select value={cfg.mode} onChange={(e) => set({ mode: e.target.value as FarmConfig["mode"] })}>
             <option value="mock">mock — no network, animatic uses pencil-test</option>
@@ -86,7 +100,12 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           character reference sheets. Key stays in this browser's localStorage.
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => { saveFarmConfig(cfg); saveEditConfig(edit); onClose(); }}>save</button>
+          <button onClick={() => {
+            saveFarmConfig(cfg);
+            saveEditConfig(edit);
+            if (JSON.stringify(world) !== JSON.stringify(project.world)) dispatch({ type: "updateWorld", world });
+            onClose();
+          }}>save</button>
           <button className="ghost" onClick={onClose}>cancel</button>
         </div>
       </div>

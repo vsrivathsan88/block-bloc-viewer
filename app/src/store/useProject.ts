@@ -1,13 +1,14 @@
 // Project state: single active project, reducer + IndexedDB persistence.
 
 import { createContext, useContext, useEffect, useReducer, useRef } from "react";
-import type { CapturedFrame, CastMember, Pose, Project, SceneGroup, Shot } from "../model/types";
+import type { CapturedFrame, CastMember, Pose, Project, SceneGroup, Shot, WorldRef } from "../model/types";
 import { newScene, newShot, nextShotNumber, normalizeProject, uid } from "../model/types";
 import { db } from "./db";
 
 export type Action =
   | { type: "load"; project: Project }
   | { type: "rename"; title: string }
+  | { type: "updateWorld"; world: WorldRef }
   | { type: "addFrame"; frame: CapturedFrame }
   | { type: "renameFrame"; frameId: string; label: string }
   | { type: "deleteFrame"; frameId: string }
@@ -40,6 +41,8 @@ function reducer(state: Project | null, action: Action): Project | null {
   switch (action.type) {
     case "rename":
       return touch({ ...state, title: action.title });
+    case "updateWorld":
+      return touch({ ...state, world: action.world });
     case "addFrame":
       return touch({ ...state, frames: [...state.frames, action.frame] });
     case "renameFrame":
