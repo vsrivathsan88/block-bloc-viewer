@@ -4,6 +4,10 @@
 import { useState } from "react";
 import { loadFarmConfig, saveFarmConfig, type FarmConfig } from "../farm/client";
 import { loadMarbleConfig, MARBLE_TASKS, saveMarbleConfig, type MarbleConfig } from "../marble/client";
+import {
+  loadMeridianConfig, loadModelCatalog, refreshModelCatalog, saveMeridianConfig,
+  type MeridianConfig, type MeridianEnv, type ModelCatalog,
+} from "../marble/meridian";
 import { loadEditConfig, saveEditConfig, type EditConfig } from "../edit/imageEdit";
 import { useProject } from "../store/useProject";
 
@@ -16,6 +20,25 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const set = (patch: Partial<FarmConfig>) => setCfg({ ...cfg, ...patch });
   const [edit, setEdit] = useState<EditConfig>(loadEditConfig());
   const setE = (patch: Partial<EditConfig>) => setEdit({ ...edit, ...patch });
+  const [meridian, setMeridian] = useState<MeridianConfig>(loadMeridianConfig());
+  const [catalog, setCatalog] = useState<ModelCatalog | null>(loadModelCatalog());
+  const [catalogNote, setCatalogNote] = useState("");
+  const [loadingModels, setLoadingModels] = useState(false);
+
+  async function loadModels() {
+    setLoadingModels(true);
+    setCatalogNote("");
+    try {
+      saveMeridianConfig(meridian);
+      const c = await refreshModelCatalog(meridian);
+      setCatalog(c);
+      setCatalogNote(c.servables.length ? `${c.servables.length} servables` : "registry reachable but no servables parsed");
+    } catch (e) {
+      setCatalogNote(String(e));
+    } finally {
+      setLoadingModels(false);
+    }
+  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -55,6 +78,30 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           </label>
         ))}
 
+        <h2 style={{ marginTop: 10 }}>Meridian (model discovery)</h2>
+        <div className="form-grid">
+          <label className="field">environment
+            <select value={meridian.env} onChange={(e) => setMeridian({ ...meridian, env: e.target.value as MeridianEnv })}>
+              <option value="autopush">autopush</option>
+              <option value="staging">staging</option>
+              <option value="prod">prod</option>
+            </select>
+          </label>
+          <label className="field">api key
+            <input type="password" value={meridian.apiKey}
+              onChange={(e) => setMeridian({ ...meridian, apiKey: e.target.value })} />
+          </label>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button className="ghost" onClick={loadModels} disabled={loadingModels}>
+            {loadingModels ? "loading…" : "↻ load models from registry"}
+          </button>
+          {catalogNote && <span className="hint">{catalogNote}</span>}
+          {!catalogNote && catalog && (
+            <span className="hint">{catalog.servables.length} servables · {new Date(catalog.fetchedAt).toLocaleTimeString()}</span>
+          )}
+        </div>
+
         <h2 style={{ marginTop: 10 }}>FARM AR</h2>
         <label className="field">mode
           <select value={cfg.mode} onChange={(e) => set({ mode: e.target.value as FarmConfig["mode"] })}>
@@ -62,8 +109,12 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             <option value="live">live — tasks:farmAr</option>
           </select>
         </label>
-        <label className="field">model slug (blank = server default)
-          <input value={cfg.model} onChange={(e) => set({ model: e.target.value })} placeholder="run09-v1" />
+        <label className="field">model (blank = server default)
+          <input value={cfg.model} onChange={(e) => set({ model: e.target.value })}
+            placeholder="run09-v1" list="farm-models" />
+          <datalist id="farm-models">
+            {(catalog?.farmSlugs ?? []).map((s) => <option key={s} value={s} />)}
+          </datalist>
         </label>
         <div className="form-grid">
           <label className="field">fps (path density + MP4)
@@ -119,6 +170,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => {
             saveMarbleConfig(marble);
+            saveMeridianConfig(meridian);
             saveFarmConfig(cfg);
             saveEditConfig(edit);
             if (JSON.stringify(world) !== JSON.stringify(project.world)) dispatch({ type: "updateWorld", world });
