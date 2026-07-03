@@ -34,6 +34,8 @@ interface Props {
   shots: ShotMark[];
   planned: PlannedCam[];
   onPlanned: (next: PlannedCam[]) => void;
+  /** "mini" = collapsed corner map: room + shot dots only, no labels/anchors */
+  detail?: "mini" | "full";
 }
 
 export function yawOfQuat(q: Quat): number {
@@ -47,7 +49,7 @@ export function yawQuat(yaw: number): Quat {
 
 const PAD = 26; // px margin around the bbox
 
-export default function PlanCanvas({ bbox, anchors, shots, planned, onPlanned }: Props) {
+export default function PlanCanvas({ bbox, anchors, shots, planned, onPlanned, detail = "full" }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drag = useRef<{ cam: PlannedCam; moved: boolean } | null>(null);
 
@@ -69,6 +71,7 @@ export default function PlanCanvas({ bbox, anchors, shots, planned, onPlanned }:
   function draw() {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const mini = detail === "mini";
     const dpr = devicePixelRatio || 1;
     const w = canvas.clientWidth, h = canvas.clientHeight;
     if (canvas.width !== Math.round(w * dpr)) canvas.width = Math.round(w * dpr);
@@ -77,77 +80,90 @@ export default function PlanCanvas({ bbox, anchors, shots, planned, onPlanned }:
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
     const m = mapping(canvas);
-    const css = getComputedStyle(canvas);
-    const col = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
-    const cInk = col("--fg", "#1d1b2a");
-    const cMuted = col("--muted", "#786f8f");
-    const cBorder = col("--border", "#ded7f0");
-    const cRed = col("--danger", "#e5484d");
-    const cGreen = col("--success", "#22a06b");
-    const cViolet = col("--accent", "#6d4aff");
+    // The map lives on dark glass — fixed overlay palette, not theme tokens.
+    const GRID = "rgba(255,255,255,0.08)";
+    const WALL = "rgba(255,255,255,0.4)";
+    const FLOOR = "rgba(255,255,255,0.045)";
+    const ORIGIN = "rgba(255,255,255,0.5)";
+    const RED = "#ff6b6b";
+    const GREEN = "#3ecf9a";
+    const VIOLET = "#9d87ff";
 
-    // 1m grid
-    ctx.strokeStyle = cBorder;
-    ctx.lineWidth = 0.5;
-    ctx.globalAlpha = 0.6;
+    const [x0, z0] = m.toPx(bbox.min[0], bbox.min[1]);
+    const [x1, z1] = m.toPx(bbox.max[0], bbox.max[1]);
+
+    // floor
+    ctx.fillStyle = FLOOR;
+    ctx.fillRect(x0, z0, x1 - x0, z1 - z0);
+
+    // 1m grid, clipped to the room
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x0, z0, x1 - x0, z1 - z0);
+    ctx.clip();
+    ctx.strokeStyle = GRID;
+    ctx.lineWidth = 1;
     for (let x = Math.ceil(bbox.min[0]); x <= bbox.max[0]; x++) {
       const [px] = m.toPx(x, 0);
-      ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, h); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px + 0.5, z0); ctx.lineTo(px + 0.5, z1); ctx.stroke();
     }
     for (let z = Math.ceil(bbox.min[1]); z <= bbox.max[1]; z++) {
       const [, pz] = m.toPx(0, z);
-      ctx.beginPath(); ctx.moveTo(0, pz); ctx.lineTo(w, pz); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x0, pz + 0.5); ctx.lineTo(x1, pz + 0.5); ctx.stroke();
     }
-    ctx.globalAlpha = 1;
+    ctx.restore();
 
-    // room bounds
-    const [x0, z0] = m.toPx(bbox.min[0], bbox.min[1]);
-    const [x1, z1] = m.toPx(bbox.max[0], bbox.max[1]);
-    ctx.strokeStyle = cMuted;
-    ctx.lineWidth = 1.5;
+    // walls
+    ctx.strokeStyle = WALL;
+    ctx.lineWidth = mini ? 1 : 1.5;
     ctx.strokeRect(x0, z0, x1 - x0, z1 - z0);
 
-    // capture origin
+    // capture origin: small cross
     const [xo, zo] = m.toPx(0, 0);
-    ctx.fillStyle = cInk;
-    ctx.font = "11px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("✦", xo, zo + 4);
+    ctx.strokeStyle = ORIGIN;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(xo - 4, zo); ctx.lineTo(xo + 4, zo);
+    ctx.moveTo(xo, zo - 4); ctx.lineTo(xo, zo + 4);
+    ctx.stroke();
 
-    const wedge = (x: number, z: number, yaw: number, color: string, r: number, half = 0.5) => {
+    const cam = (x: number, z: number, yaw: number, color: string, opts: { r: number; wedge?: number; alpha?: number }) => {
       const [px, pz] = m.toPx(x, z);
-      const dir = Math.atan2(-Math.sin(yaw), -Math.cos(yaw)); // XZ angle of forward
+      if (opts.wedge) {
+        const dir = Math.atan2(-Math.sin(yaw), -Math.cos(yaw));
+        ctx.beginPath();
+        ctx.moveTo(px, pz);
+        ctx.arc(px, pz, opts.wedge, dir - 0.45, dir + 0.45);
+        ctx.closePath();
+        ctx.fillStyle = color;
+        ctx.globalAlpha = opts.alpha ?? 0.16;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
       ctx.beginPath();
-      ctx.moveTo(px, pz);
-      ctx.arc(px, pz, r, dir - half, dir + half);
-      ctx.closePath();
-      ctx.fillStyle = color;
-      ctx.globalAlpha = 0.2;
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      ctx.beginPath();
-      ctx.arc(px, pz, 4, 0, Math.PI * 2);
+      ctx.arc(px, pz, opts.r, 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
     };
 
-    for (const a of anchors) {
-      wedge(a.pose.position[0], a.pose.position[2], yawOfQuat(a.pose.quaternion), cGreen, 20, 0.45);
+    if (!mini) {
+      for (const a of anchors) {
+        cam(a.pose.position[0], a.pose.position[2], yawOfQuat(a.pose.quaternion), GREEN, { r: 2, wedge: 13, alpha: 0.1 });
+      }
     }
     for (const s of shots) {
-      wedge(s.x, s.z, s.yaw, cRed, 26, 0.5);
-      const [px, pz] = m.toPx(s.x, s.z);
-      ctx.fillStyle = cRed;
-      ctx.font = "bold 10px sans-serif";
-      ctx.fillText(s.label, px, pz - 8);
+      cam(s.x, s.z, s.yaw, RED, mini ? { r: 2.5 } : { r: 3, wedge: 17 });
     }
-    planned.forEach((c, i) => {
-      wedge(c.x, c.z, c.yaw, cViolet, 30, 0.55);
-      const [px, pz] = m.toPx(c.x, c.z);
-      ctx.fillStyle = cViolet;
-      ctx.font = "bold 11px sans-serif";
-      ctx.fillText(String(i + 1), px, pz - 9);
-    });
+    if (!mini) {
+      ctx.font = "600 9px Inter, sans-serif";
+      ctx.textAlign = "center";
+      planned.forEach((c, i) => {
+        cam(c.x, c.z, c.yaw, VIOLET, { r: 3.5, wedge: 24, alpha: 0.22 });
+        const [px, pz] = m.toPx(c.x, c.z);
+        ctx.fillStyle = VIOLET;
+        ctx.fillText(String(i + 1), px, pz - 7);
+      });
+    }
   }
 
   useEffect(() => {
@@ -158,7 +174,7 @@ export default function PlanCanvas({ bbox, anchors, shots, planned, onPlanned }:
     obs.observe(canvas);
     return () => obs.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bbox, anchors, shots, planned]);
+  }, [bbox, anchors, shots, planned, detail]);
 
   function eventWorld(e: React.PointerEvent): [number, number] {
     const canvas = canvasRef.current!;

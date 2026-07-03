@@ -58,7 +58,13 @@ export const IconDots = () => (
   <svg {...S}><circle cx="5" cy="12" r="1.8" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1.8" fill="currentColor" stroke="none" /></svg>
 );
 export const IconMap = () => (
-  <svg {...S}><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z" /><line x1="9" y1="4" x2="9" y2="18" /><line x1="15" y1="6" x2="15" y2="20" /></svg>
+  // floor plan: room outline + camera dot with view wedge
+  <svg {...S}>
+    <rect x="3.5" y="3.5" width="17" height="17" rx="1.5" />
+    <path d="M9 20.5V13h-5.5" />
+    <circle cx="14.5" cy="14.5" r="1.6" fill="currentColor" stroke="none" />
+    <path d="M14.5 12.6l-2.3-3.4M14.5 12.6l2.3-3.4" strokeWidth="1.5" />
+  </svg>
 );
 export const IconCameraRig = () => (
   <svg {...S}><rect x="3" y="8" width="12" height="10" rx="2" /><polygon points="15 11 21 8 21 18 15 15" fill="currentColor" stroke="none" /></svg>
@@ -79,7 +85,15 @@ export const IconBoard = () => (
   <svg {...S}><rect x="3" y="4" width="8" height="7" rx="1" /><rect x="13" y="4" width="8" height="7" rx="1" /><rect x="3" y="14" width="8" height="7" rx="1" /><rect x="13" y="14" width="8" height="7" rx="1" /></svg>
 );
 export const IconStage = () => (
-  <svg {...S}><path d="M3 7l9-4 9 4-9 4-9-4z" /><path d="M3 7v8l9 4 9-4V7" /><path d="M12 11v8" /></svg>
+  // clapperboard
+  <svg {...S}>
+    <path d="M20.2 6.6L4.8 10.7 4 7.8a1 1 0 0 1 .7-1.2l13.5-3.6a1 1 0 0 1 1.2.7l.8 2.9z" />
+    <path d="M4.8 10.7h15.7v8.3a1 1 0 0 1-1 1H5.8a1 1 0 0 1-1-1v-8.3z" />
+    <path d="M8.6 6.9l1.6 2.6M13.4 5.6l1.6 2.6" />
+  </svg>
+);
+export const IconBox = () => (
+  <svg {...S}><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" /><path d="M4 7.5l8 4.5 8-4.5" /><path d="M12 12v9" /></svg>
 );
 export const IconShutter = () => (
   <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>

@@ -193,6 +193,7 @@ export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: str
           anchors={project.frames}
           shots={shotMarks}
           planned={planned}
+          detail={mapOpen ? "full" : "mini"}
           onPlanned={(p) => { setPlanned(p); if (!mapOpen) setMapOpen(true); }}
         />
         {!mapOpen && <button className="map-hit" title="camera plan" onClick={() => setMapOpen(true)} />}

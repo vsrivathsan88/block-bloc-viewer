@@ -58,13 +58,14 @@ export interface CapturedFrame {
   capturedAt: number;
 }
 
-/** A character in the picture. Reference images keep the character consistent
- * across every shot's cast pass. */
+/** Someone or something placed into shots via the cast pass. Reference
+ * images keep it consistent across the board. */
 export interface CastMember {
   id: string;
   name: string;
-  description: string; // wardrobe, age, look — goes into every edit instruction
+  description: string; // wardrobe/age/look, or material/size for props
   refImageIds: string[];
+  kind?: "character" | "prop"; // default character (pre-props projects)
 }
 
 export type FarmTaskStatus = "queued" | "running" | "done" | "error";

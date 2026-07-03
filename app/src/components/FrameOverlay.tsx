@@ -13,8 +13,8 @@ import SketchCanvas from "./SketchCanvas";
 import { db } from "../store/db";
 import { getImageData, primeImageCache, useImage, useProject } from "../store/useProject";
 import {
-  IconArrow, IconBolt, IconCheck, IconClose, IconPencil, IconPersonPlus,
-  IconRevert, IconTrash, IconUndo,
+  IconArrow, IconBolt, IconBox, IconCheck, IconClose, IconPencil, IconPerson,
+  IconPersonPlus, IconRevert, IconTrash, IconUndo,
 } from "./icons";
 
 const COLORS = ["#3d3a35", "#e5484d", "#3d648f"];
@@ -22,7 +22,12 @@ const COLORS = ["#3d3a35", "#e5484d", "#3d648f"];
 function CastChip({ member, onClick, busy }: { member: CastMember; onClick: () => void; busy: boolean }) {
   const img = useImage(member.refImageIds[0]);
   return (
-    <button className="chip-cast" title={`add ${member.name} to this frame`} onClick={onClick} disabled={busy}>
+    <button
+      className={`chip-cast ${member.kind === "prop" ? "prop" : ""}`}
+      title={`add ${member.name} to this frame`}
+      onClick={onClick}
+      disabled={busy}
+    >
       {img ? <img src={img} alt="" /> : <span>{member.name.slice(0, 1).toUpperCase()}</span>}
     </button>
   );
@@ -42,6 +47,7 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
   const [showCastForm, setShowCastForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [newKind, setNewKind] = useState<"character" | "prop">("character");
 
   const cleanFrame = shot ? frameById(project, shot.frameId) : undefined;
   const castFrame = shot ? frameById(project, shot.castFrameId) : undefined;
@@ -72,9 +78,11 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
         if (r) refs.push(r);
       }
       const instruction =
-        `Add ${member.name} (${member.description || "see reference"}) into this room, ` +
+        (member.kind === "prop"
+          ? `Place a ${member.name} (${member.description || "see reference"}) into this room at a natural spot, `
+          : `Add ${member.name} (${member.description || "see reference"}) into this room, `) +
         `matching its lighting, perspective and grain exactly. ${shot.action || ""} ` +
-        (refs.length ? "Use the reference image(s) for their exact appearance. " : "") +
+        (refs.length ? "Use the reference image(s) for the exact appearance. " : "") +
         "Do not change the room, framing or camera.";
       const dataUrl = await editImage(loadEditConfig(), { base, refs, instruction });
       const imageId = uid();
@@ -226,12 +234,14 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
 
         {showCastForm && (
           <div className="cast-form">
-            <input placeholder="name" value={newName} onChange={(e) => setNewName(e.target.value)} />
-            <input placeholder="look — wardrobe, age…" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} />
+            <button className={`ib ${newKind === "character" ? "on" : ""}`} title="character" onClick={() => setNewKind("character")}><IconPerson /></button>
+            <button className={`ib ${newKind === "prop" ? "on" : ""}`} title="prop / object" onClick={() => setNewKind("prop")}><IconBox /></button>
+            <input placeholder={newKind === "prop" ? "prop — e.g. record player" : "name"} value={newName} onChange={(e) => setNewName(e.target.value)} />
+            <input placeholder={newKind === "prop" ? "material, size, era…" : "look — wardrobe, age…"} value={newDesc} onChange={(e) => setNewDesc(e.target.value)} />
             <button className="ib" title="add"
               onClick={() => {
                 if (!newName.trim()) return;
-                dispatch({ type: "addCastMember", member: { id: uid(), name: newName.trim(), description: newDesc.trim(), refImageIds: [] } });
+                dispatch({ type: "addCastMember", member: { id: uid(), name: newName.trim(), description: newDesc.trim(), refImageIds: [], kind: newKind } });
                 setNewName(""); setNewDesc(""); setShowCastForm(false);
               }}><IconCheck /></button>
           </div>

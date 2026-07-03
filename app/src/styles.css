@@ -535,3 +535,7 @@ label.field {
 .board-card .bc-caption::placeholder, .board-card .bc-dialogue::placeholder { color: color-mix(in oklab, var(--muted), white 40%); }
 .board-empty { grid-column: 1 / -1; text-align: center; color: var(--ink-soft); padding: 15vh 0; }
 .board-total { text-align: center; margin-top: 22px; font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); }
+
+.chip-cast.prop { border-radius: 8px; background: var(--fg-2); }
+.minimap:not(.open) { width: 108px; opacity: .85; }
+.minimap:not(.open):hover { opacity: 1; }
