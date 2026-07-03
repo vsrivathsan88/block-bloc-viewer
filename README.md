@@ -62,15 +62,14 @@ The headless flythrough recorder (`.claude/scripts/api/render_flythrough.mjs` in
 
 ## Shotboard (/storyboard)
 
-A storyboarding app in the Scorsese mold, living at `/storyboard/` (source in `/app`, Vite + React, built output committed so GH Pages serves it next to the viewer). The design north star: camera movement as language, hand-drawn immediacy, shot-list rigor, editing rhythm.
+A storyboarding app on top of this viewer + FARM AR (`/app` source, built output committed to `/storyboard`). One screen, one verb:
 
-The UI is bound to the [open-design](https://github.com/nexu-io/open-design) **lingo** design system (`design-systems/lingo/tokens.css`, vendored verbatim at the top of `app/src/styles.css` with an app-binding layer underneath). Color jobs: red = record/capture, violet = FARM/generate, green = scout, amber = cast pass, slate = shot list; movement chips color by family (dolly/pan/track/static).
+- The **world fills the screen** (this viewer in a same-origin iframe, chrome hidden, driven via the `window.DEBUG` contract). Walk it; the **shutter** (or `C`) shoots what you see — the shot lands on the **film strip** at the bottom with its pose, lens (inferred from fov) and angle (inferred from pitch) already known.
+- The **mini-map** (top-left) expands into the camera plan: press to place a camera, pull to aim, rig button shoots them all, and an accept/reject **take review** (`A`/`R`) fills the strip.
+- Click a strip frame → the **frame overlay**: draw the move in grease pencil, pick a move glyph, one line of action, drop a **cast chip** on the plate (3P image edit), hit **⚡** for FARM AR. Generation continues after the overlay closes (app-level watcher); the strip dot tracks queued/running/done.
+- **▶ plays the board** — FARM footage where it exists, Ken Burns pencil-test elsewhere. The shooting plan (printable) and export/import live in the `⋯` menu.
 
-- **Scout** — this viewer embedded as a same-origin iframe (driven through the `window.DEBUG` recorder contract). Two ways to get shots: the **camera plan** (primary, low-click) — a top-down canvas of the set sized from the splat's world bbox; press to place a camera, pull to aim, release to commit; one **shoot** drives the viewer through every planned camera and captures a take each; an accept/reject **take review** (A/R keys) puts the keepers on the board as shots. Or hand-frame on foot: walk, **mark IN** / **mark OUT** (`C` marks IN in pointer lock), "preview move" flies IN→OUT.
-- **Board** — panels pinned to paper: pencil-filtered keyframes, sketch overlays, slate strips (scene·shot, movement glyph, lens, duration). Drag to re-cut.
-- **Shot editor** — grease-pencil sketch layer (pencil + movement arrows in graphite/red/blue), full shot spec (lens, angle, movement, duration, action/dialogue/notes), FARM AR context tray + generation.
-- **Shot list** — the numbered shooting plan, printable.
-- **Animatic** — cuts through the board at shot durations; FARM-generated video when present, otherwise a Ken Burns "pencil test" derived from the movement spec.
+UI is bound to the [open-design](https://github.com/nexu-io/open-design) **lingo** tokens (vendored in `app/src/styles.css`); controls are icon-only with tooltips. `VITE_DEMO=1` builds swap the viewer for a self-contained blockout world (`app/src/lib/demoViewer.ts`) so hosted previews work without CDN access.
 
 ### FARM AR integration
 
