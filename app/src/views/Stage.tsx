@@ -14,11 +14,11 @@ import { primeImageCache, useProject } from "../store/useProject";
 import PlanCanvas, { type BboxXZ, type PlannedCam, type ShotMark, yawOfQuat, yawQuat } from "../components/PlanCanvas";
 import TakeReview, { type Take } from "../components/TakeReview";
 import FilmStrip from "../components/FilmStrip";
-import { IconCameraRig, IconShutter } from "../components/icons";
+import { IconCameraRig, IconMap, IconPlay, IconShutter } from "../components/icons";
 
 const FALLBACK_BBOX: BboxXZ = { min: [-4, -4], max: [4, 4] };
 
-export default function Stage({ onOpenShot }: { onOpenShot: (shotId: string) => void }) {
+export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: string) => void; onPlay: () => void }) {
   const { project, dispatch } = useProject();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [planned, setPlanned] = useState<PlannedCam[]>([]);
@@ -212,9 +212,18 @@ export default function Stage({ onOpenShot }: { onOpenShot: (shotId: string) => 
         )}
       </div>
 
-      <button className="shutter" title="shoot this frame (C)" onClick={shutter}>
-        <IconShutter />
-      </button>
+      {/* Figma-style floating toolbar: map · shutter · play */}
+      <div className="toolbar">
+        <button className={`ib ${mapOpen ? "on" : ""}`} title="camera plan" onClick={() => { setMapOpen(!mapOpen); if (mapOpen) setPlanned([]); }}>
+          <IconMap />
+        </button>
+        <button className="shutter" title="shoot this frame (C)" onClick={shutter}>
+          <IconShutter />
+        </button>
+        <button className="ib" title="play the board" onClick={onPlay}>
+          <IconPlay />
+        </button>
+      </div>
 
       <FilmStrip project={project} activeShotId={null} onOpen={onOpenShot} onMove={moveFlat} />
 

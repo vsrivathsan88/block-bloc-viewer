@@ -4,11 +4,12 @@ import { exportProject, importProject } from "./lib/exportImport";
 import { useFarmWatcher } from "./store/farmWatcher";
 import { loadLastProject, ProjectContext, useProjectReducer } from "./store/useProject";
 import Stage from "./views/Stage";
+import BoardSheet from "./components/BoardSheet";
 import FrameOverlay from "./components/FrameOverlay";
 import PlayerOverlay from "./components/PlayerOverlay";
 import SettingsModal from "./views/SettingsModal";
 import ShotListView from "./views/ShotListView";
-import { IconClose, IconDots, IconGear, IconPlay } from "./components/icons";
+import { IconBoard, IconClose, IconDots, IconGear, IconStage } from "./components/icons";
 
 // The living-room demo world the viewer defaults to.
 const DEMO_SPZ = "https://cdn.marble.worldlabs.ai/bd1c3e7a-e412-4950-bb82-045f95f047a5/0dea05c6-6b15-4d51-bc0d-5f46b5e3df5a_ceramic_500k.spz";
@@ -16,6 +17,7 @@ const DEMO_SPZ = "https://cdn.marble.worldlabs.ai/bd1c3e7a-e412-4950-bb82-045f95
 export default function App() {
   const { project, dispatch } = useProjectReducer();
   const [openShotId, setOpenShotId] = useState<string | null>(null);
+  const [view, setView] = useState<"stage" | "board">("stage");
   const [playing, setPlaying] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showPlan, setShowPlan] = useState(false); // printable shooting plan
@@ -37,14 +39,13 @@ export default function App() {
 
   return (
     <ProjectContext.Provider value={{ project, dispatch }}>
-      <div className="topbar-min">
+      <div className={`topbar-min ${view === "board" ? "light" : ""}`}>
         <input
           className="title"
           value={project.title}
           onChange={(e) => dispatch({ type: "rename", title: e.target.value })}
         />
         <div className="spacer" />
-        <button className="ib" title="play the board" onClick={() => setPlaying(true)}><IconPlay /></button>
         <button className="ib" title="settings — world, FARM, cast pass" onClick={() => setShowSettings(true)}><IconGear /></button>
         <div className="menu-wrap">
           <button className="ib" title="more" onClick={() => setMenuOpen(!menuOpen)}><IconDots /></button>
@@ -85,7 +86,14 @@ export default function App() {
         </div>
       </div>
 
-      <Stage onOpenShot={setOpenShotId} />
+      {/* view switcher — Figma-style, top center */}
+      <div className={`view-switch ${view === "board" ? "light" : ""}`}>
+        <button className={view === "stage" ? "on" : ""} title="stage — the world" onClick={() => setView("stage")}><IconStage /></button>
+        <button className={view === "board" ? "on" : ""} title="storyboard — frames with captions" onClick={() => setView("board")}><IconBoard /></button>
+      </div>
+
+      <Stage onOpenShot={setOpenShotId} onPlay={() => setPlaying(true)} />
+      {view === "board" && <BoardSheet onOpenShot={setOpenShotId} />}
 
       {openShotId && <FrameOverlay shotId={openShotId} onClose={() => setOpenShotId(null)} />}
       {playing && <PlayerOverlay onClose={() => setPlaying(false)} />}

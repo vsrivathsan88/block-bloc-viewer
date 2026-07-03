@@ -75,6 +75,12 @@ export const IconUpload = () => (
 export const IconRevert = () => (
   <svg {...S}><path d="M4 5v6h6" /><path d="M4.5 11A8 8 0 1 1 7 17.7" /></svg>
 );
+export const IconBoard = () => (
+  <svg {...S}><rect x="3" y="4" width="8" height="7" rx="1" /><rect x="13" y="4" width="8" height="7" rx="1" /><rect x="3" y="14" width="8" height="7" rx="1" /><rect x="13" y="14" width="8" height="7" rx="1" /></svg>
+);
+export const IconStage = () => (
+  <svg {...S}><path d="M3 7l9-4 9 4-9 4-9-4z" /><path d="M3 7v8l9 4 9-4V7" /><path d="M12 11v8" /></svg>
+);
 export const IconShutter = () => (
   <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
     <circle cx="12" cy="12" r="9" />
