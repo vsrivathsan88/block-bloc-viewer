@@ -11,12 +11,13 @@ import {
 import { DEMO_MODE, DEMO_VIEWER_HTML } from "../lib/demoViewer";
 import { impliedEndPose } from "../lib/movement";
 import { pathPoseAt, shouldKeepWaypoint } from "../lib/path";
+import { qNormalize, qSlerp, translateLocal } from "../lib/pose";
 import { db } from "../store/db";
 import { primeImageCache, useProject } from "../store/useProject";
-import PlanCanvas, { type BboxXZ, type PlannedCam, type ShotMark, yawOfQuat, yawQuat } from "../components/PlanCanvas";
+import PlanCanvas, { type BboxXZ, type PathEdit, type PlannedCam, type ShotMark, yawOfQuat, yawQuat } from "../components/PlanCanvas";
 import TakeReview, { type Take } from "../components/TakeReview";
 import FilmStrip from "../components/FilmStrip";
-import { IconCameraRig, IconFilm, IconMap, IconPath, IconPlay, IconShutter } from "../components/icons";
+import { IconCameraRig, IconCheck, IconFilm, IconMap, IconPath, IconPause, IconPlay, IconShutter } from "../components/icons";
 
 const FALLBACK_BBOX: BboxXZ = { min: [-4, -4], max: [4, 4] };
 
@@ -35,6 +36,12 @@ export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: str
   // path recording: walk the move, it becomes the shot's camera path
   const [recordingPath, setRecordingPath] = useState(false);
   const pathRec = useRef<{ poses: import("../model/types").Pose[]; cap: NonNullable<ReturnType<typeof captureFrame>>; startedAt: number; timer: number } | null>(null);
+
+  // path editing: drag waypoints on the map, scrub/loop the real viewer
+  const [editPathShotId, setEditPathShotId] = useState<string | null>(null);
+  const [scrub, setScrub] = useState(0);
+  const [looping, setLooping] = useState(false);
+  const editOrigPose = useRef<{ position: [number, number, number]; quaternion: [number, number, number, number] } | null>(null);
 
   const viewerSrc = useMemo(() => {
     const p = new URLSearchParams();
@@ -79,6 +86,106 @@ export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: str
       ),
     [project],
   );
+
+  // ---- path edit flywheel: drag → see → drag again ----
+
+  const editShot = editPathShotId
+    ? allShots(project).find((x) => x.shot.id === editPathShotId)?.shot
+    : undefined;
+  const editPoses = editShot?.pathPoses;
+
+  function applyPathEdit(a: PathEdit) {
+    if (!editShot?.pathPoses) return;
+    const poses = [...editShot.pathPoses];
+    if (a.type === "move") {
+      const p = poses[a.i];
+      if (!p) return;
+      // XZ moves; height and the recorded look direction are preserved
+      poses[a.i] = { position: [a.x, p.position[1], a.z], quaternion: p.quaternion };
+    } else if (a.type === "insert") {
+      const before = poses[Math.max(0, a.i - 1)];
+      const after = poses[Math.min(poses.length - 1, a.i)];
+      poses.splice(a.i, 0, {
+        position: [a.x, (before.position[1] + after.position[1]) / 2, a.z],
+        quaternion: qNormalize(qSlerp(before.quaternion, after.quaternion, 0.5)),
+      });
+    } else if (a.type === "delete") {
+      if (poses.length <= 2) return;
+      poses.splice(a.i, 1);
+    }
+    dispatch({ type: "updateShot", shotId: editShot.id, patch: { pathPoses: poses } });
+  }
+
+  function scrubTo(s: number) {
+    setScrub(s);
+    if (editPoses && editPoses.length >= 2) setViewerPose(iframeRef.current, pathPoseAt(editPoses, s));
+  }
+
+  // enter/exit edit mode: park the viewer under our control, restore after
+  useEffect(() => {
+    const w = iframeRef.current?.contentWindow as (Window & { __recording?: boolean }) | null;
+    if (!editPathShotId || !w) return;
+    const v = getViewer(iframeRef.current);
+    if (v) {
+      const p = v.camera.position, q = v.camera.quaternion;
+      editOrigPose.current = { position: [p.x, p.y, p.z], quaternion: [q.x, q.y, q.z, q.w] };
+    }
+    w.__recording = true;
+    setMapOpen(true);
+    setScrub(0);
+    return () => {
+      setLooping(false);
+      if (editOrigPose.current) setViewerPose(iframeRef.current, editOrigPose.current);
+      w.__recording = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editPathShotId]);
+
+  // loop playback while editing — every waypoint drag is visible in motion
+  useEffect(() => {
+    if (!looping || !editShot) return;
+    const durMs = editShot.durationSec * 1000;
+    let raf = 0;
+    const t0 = performance.now() - scrub * durMs;
+    const step = () => {
+      const s = ((performance.now() - t0) % durMs) / durMs;
+      scrubTo(s);
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [looping, editShot?.durationSec, editPoses]);
+
+  // frame overlay asks to edit a shot's path
+  useEffect(() => {
+    const h = (e: Event) => {
+      const shotId = (e as CustomEvent).detail?.shotId as string | undefined;
+      const found = allShots(project).find((x) => x.shot.id === shotId);
+      if (!found) return;
+      const kf = frameById(project, found.shot.frameId);
+      if (!kf) return;
+      if (!found.shot.pathPoses || found.shot.pathPoses.length < 2) {
+        // seed an editable path from the shot's implied move; a static shot
+        // gets a small push-in so the two waypoints are grabbable on the map
+        let end = found.shot.endPose ?? impliedEndPose(found.shot.movement, kf.pose);
+        const d = Math.hypot(
+          end.position[0] - kf.pose.position[0],
+          end.position[1] - kf.pose.position[1],
+          end.position[2] - kf.pose.position[2],
+        );
+        if (d < 0.05) end = translateLocal(kf.pose, [0, 0, -0.9]);
+        dispatch({
+          type: "updateShot",
+          shotId: found.shot.id,
+          patch: { pathPoses: [kf.pose, end] },
+        });
+      }
+      setEditPathShotId(found.shot.id);
+    };
+    window.addEventListener("shotboard:edit-path", h);
+    return () => window.removeEventListener("shotboard:edit-path", h);
+  }, [project, dispatch]);
 
   // preview a shot's move in the world (dispatched from the frame overlay)
   useEffect(() => {
@@ -373,10 +480,38 @@ export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: str
           paths={pathLines}
           underlayUrl={project.world.minimapUrl}
           detail={mapOpen ? "full" : "mini"}
+          editPath={
+            editPoses && editPoses.length >= 2
+              ? { pts: editPoses.map((p) => [p.position[0], p.position[2]] as [number, number]), onEdit: applyPathEdit }
+              : undefined
+          }
+          marker={
+            editPoses && editPoses.length >= 2
+              ? ([pathPoseAt(editPoses, scrub).position[0], pathPoseAt(editPoses, scrub).position[2]] as [number, number])
+              : undefined
+          }
           onPlanned={(p) => { setPlanned(p); if (!mapOpen) setMapOpen(true); }}
         />
         {!mapOpen && <button className="map-hit" title="camera plan" onClick={() => setMapOpen(true)} />}
-        {mapOpen && (
+        {mapOpen && editPathShotId && (
+          <div className="path-ctl">
+            <button className="ib" title={looping ? "pause" : "loop the move"} onClick={() => setLooping(!looping)}>
+              {looping ? <IconPause /> : <IconPlay />}
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={1000}
+              value={Math.round(scrub * 1000)}
+              title="scrub the move"
+              onChange={(e) => { setLooping(false); scrubTo(Number(e.target.value) / 1000); }}
+            />
+            <button className="ib" title="done editing path" onClick={() => setEditPathShotId(null)}>
+              <IconCheck />
+            </button>
+          </div>
+        )}
+        {mapOpen && !editPathShotId && (
           <div className="map-ctl">
             <button
               className="ib bolt-red"

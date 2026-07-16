@@ -13,8 +13,8 @@ import SketchCanvas from "./SketchCanvas";
 import { db } from "../store/db";
 import { getImageData, primeImageCache, useImage, useProject } from "../store/useProject";
 import {
-  IconArrow, IconBolt, IconBox, IconCheck, IconClose, IconPencil, IconPerson,
-  IconPersonPlus, IconPlay, IconRevert, IconTrash, IconUndo,
+  IconArrow, IconBolt, IconBox, IconCheck, IconClose, IconPath, IconPencil,
+  IconPerson, IconPersonPlus, IconPlay, IconRevert, IconTrash, IconUndo,
 } from "./icons";
 
 const COLORS = ["#3d3a35", "#e5484d", "#3d648f"];
@@ -153,6 +153,18 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
             onClick={() => patch({ strokes: shot.strokes.slice(0, -1) })}><IconUndo /></button>
           <button className="ib" title="preview the move in the world" disabled={!keyframe} onClick={previewMove}>
             <IconPlay />
+          </button>
+          <button
+            className="ib"
+            title="edit the camera path on the map"
+            disabled={!keyframe}
+            onClick={() => {
+              if (!shot) return;
+              onClose();
+              window.dispatchEvent(new CustomEvent("shotboard:edit-path", { detail: { shotId: shot.id } }));
+            }}
+          >
+            <IconPath />
           </button>
 
           <span className="sep" />

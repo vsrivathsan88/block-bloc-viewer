@@ -40,7 +40,17 @@ interface Props {
   paths?: { pts: [number, number][] }[];
   /** the world's own minimap image, drawn under the grid across the bbox */
   underlayUrl?: string;
+  /** path-edit mode: drag waypoints, click the curve to insert, click a
+   * waypoint to remove. While set, planned-camera placement is disabled. */
+  editPath?: { pts: [number, number][]; onEdit: (a: PathEdit) => void };
+  /** scrub position marker (world XZ) */
+  marker?: [number, number];
 }
+
+export type PathEdit =
+  | { type: "move"; i: number; x: number; z: number }
+  | { type: "insert"; i: number; x: number; z: number }
+  | { type: "delete"; i: number };
 
 export function yawOfQuat(q: Quat): number {
   const f = qRotate(q, [0, 0, -1]);
@@ -53,9 +63,10 @@ export function yawQuat(yaw: number): Quat {
 
 const PAD = 26; // px margin around the bbox
 
-export default function PlanCanvas({ bbox, anchors, shots, planned, onPlanned, detail = "full", paths, underlayUrl }: Props) {
+export default function PlanCanvas({ bbox, anchors, shots, planned, onPlanned, detail = "full", paths, underlayUrl, editPath, marker }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drag = useRef<{ cam: PlannedCam; moved: boolean } | null>(null);
+  const pathDrag = useRef<{ i: number; moved: boolean } | null>(null);
   const underlay = useRef<{ url: string; img: HTMLImageElement; ready: boolean } | null>(null);
 
   // world→canvas mapping (recomputed per render from the element size)
@@ -211,6 +222,46 @@ export default function PlanCanvas({ bbox, anchors, shots, planned, onPlanned, d
         ctx.fillText(String(i + 1), px, pz - 7);
       });
     }
+
+    // path being edited: violet curve + draggable waypoint dots + scrub marker
+    if (editPath && !mini) {
+      const px = editPath.pts.map(([x, z]) => m.toPx(x, z));
+      if (px.length >= 2) {
+        ctx.strokeStyle = VIOLET;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(px[0][0], px[0][1]);
+        for (let i = 1; i < px.length - 1; i++) {
+          ctx.quadraticCurveTo(px[i][0], px[i][1], (px[i][0] + px[i + 1][0]) / 2, (px[i][1] + px[i + 1][1]) / 2);
+        }
+        ctx.lineTo(px[px.length - 1][0], px[px.length - 1][1]);
+        ctx.stroke();
+      }
+      px.forEach(([x, y], i) => {
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = VIOLET;
+        ctx.fill();
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        if (i === 0 || i === px.length - 1) {
+          ctx.fillStyle = "#fff";
+          ctx.font = "600 8px Inter, sans-serif";
+          ctx.fillText(i === 0 ? "in" : "out", x, y - 9);
+        }
+      });
+    }
+    if (marker && !mini) {
+      const [mx, mz] = m.toPx(marker[0], marker[1]);
+      ctx.beginPath();
+      ctx.arc(mx, mz, 4, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff";
+      ctx.fill();
+      ctx.strokeStyle = VIOLET;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
   }
 
   useEffect(() => {
@@ -221,7 +272,7 @@ export default function PlanCanvas({ bbox, anchors, shots, planned, onPlanned, d
     obs.observe(canvas);
     return () => obs.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bbox, anchors, shots, planned, detail, paths, underlayUrl]);
+  }, [bbox, anchors, shots, planned, detail, paths, underlayUrl, editPath, marker]);
 
   function eventWorld(e: React.PointerEvent): [number, number] {
     const canvas = canvasRef.current!;
@@ -237,9 +288,34 @@ export default function PlanCanvas({ bbox, anchors, shots, planned, onPlanned, d
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture(e.pointerId);
         const [x, z] = eventWorld(e);
-        // hit-test planned cams (remove on plain click)
         const canvas = canvasRef.current!;
         const m = mapping(canvas);
+        // path-edit mode: waypoints and curve own the pointer
+        if (editPath) {
+          const rect = canvas.getBoundingClientRect();
+          const ex = e.clientX - rect.left, ez = e.clientY - rect.top;
+          const px = editPath.pts.map(([wx, wz]) => m.toPx(wx, wz));
+          const hitIdx = px.findIndex(([hx, hz]) => Math.hypot(ex - hx, ez - hz) < 11);
+          if (hitIdx >= 0) {
+            pathDrag.current = { i: hitIdx, moved: false };
+            return;
+          }
+          // near a segment → insert a waypoint there and start dragging it
+          for (let i = 0; i < px.length - 1; i++) {
+            const [ax, az] = px[i], [bx, bz] = px[i + 1];
+            const dx = bx - ax, dz = bz - az;
+            const len2 = dx * dx + dz * dz || 1;
+            const t = Math.max(0, Math.min(1, ((ex - ax) * dx + (ez - az) * dz) / len2));
+            const qx = ax + dx * t, qz = az + dz * t;
+            if (Math.hypot(ex - qx, ez - qz) < 9) {
+              editPath.onEdit({ type: "insert", i: i + 1, x, z });
+              pathDrag.current = { i: i + 1, moved: true };
+              return;
+            }
+          }
+          return;
+        }
+        // hit-test planned cams (remove on plain click)
         const hit = planned.find((c) => {
           const [px, pz] = m.toPx(c.x, c.z);
           const rect = canvas.getBoundingClientRect();
@@ -259,6 +335,12 @@ export default function PlanCanvas({ bbox, anchors, shots, planned, onPlanned, d
         onPlanned([...planned, cam]);
       }}
       onPointerMove={(e) => {
+        if (editPath && pathDrag.current) {
+          const [x, z] = eventWorld(e);
+          pathDrag.current.moved = true;
+          editPath.onEdit({ type: "move", i: pathDrag.current.i, x, z });
+          return;
+        }
         if (!drag.current) return;
         const [x, z] = eventWorld(e);
         const c = drag.current.cam;
@@ -270,7 +352,14 @@ export default function PlanCanvas({ bbox, anchors, shots, planned, onPlanned, d
           drag.current.cam = { ...c, yaw };
         }
       }}
-      onPointerUp={() => { drag.current = null; }}
+      onPointerUp={() => {
+        if (editPath && pathDrag.current) {
+          // click (no drag) on a waypoint removes it
+          if (!pathDrag.current.moved) editPath.onEdit({ type: "delete", i: pathDrag.current.i });
+          pathDrag.current = null;
+        }
+        drag.current = null;
+      }}
     />
   );
 }

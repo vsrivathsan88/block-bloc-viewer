@@ -562,3 +562,22 @@ label.field {
 }
 .world-card:hover { background: var(--border-soft); }
 .world-card img, .world-card .ph { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; background: var(--border-soft); display: block; }
+
+/* path edit controls (in the expanded minimap) */
+.path-ctl {
+  position: absolute; left: 8px; right: 8px; bottom: 8px;
+  display: flex; gap: 8px; align-items: center;
+  background: rgba(15,14,22,.85); border-radius: var(--radius-pill);
+  padding: 5px 8px;
+}
+.path-ctl .ib { width: 30px; height: 30px; background: rgba(255,255,255,.14); color: #fff; box-shadow: none; }
+.path-ctl .ib:hover { background: rgba(255,255,255,.3); }
+.path-ctl input[type="range"] {
+  flex: 1; -webkit-appearance: none; appearance: none; height: 4px;
+  background: rgba(255,255,255,.25); border-radius: 2px; border: none; padding: 0;
+}
+.path-ctl input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #fff; border: 2px solid var(--accent); cursor: pointer;
+}
