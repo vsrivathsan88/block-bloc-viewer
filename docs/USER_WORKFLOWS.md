@@ -1,136 +1,117 @@
-# Shotboard — user workflow map
+# Shotboard — user workflows (v2, world-centric)
 
-The user is a director/previz artist planning a sequence inside a generated
-world. Their journey has three acts — **build the world's context → decide
-the shots → make the shots real** — and every API touch lives in act three.
-Everything before that is deliberately local and instant.
+**Decided (Vaish, 2026-07-03):**
+- **Persona:** a Marble user with worlds in their library. Shotboard is what
+  you do *with* a world. World creation happens in Marble, not here.
+- **Scope:** one world per picture (multi-location = multiple projects).
+- **World entry:** pick from library (`worlds:list`) or paste an ID
+  (`GET /marble/v1/worlds/{world_id}`). No in-app generation in v1.
+- **Auth:** per-user keys in settings (browser-local). Proxy backend is a
+  v2 concern; the client keeps host config swappable so it's a config change.
+
+**The spine — five verbs:**
 
 ```
-ACT I · SET             ACT II · SHOTS              ACT III · FOOTAGE
-─────────────           ──────────────              ─────────────────
-W1 new picture   ──►    W3 plan cameras      ──►    W7 FARM AR generate
-W2 coverage             W4 walk & mark              W5 cast pass (3P edit)
-   (anchors)            W6 spec & sketch            W8 animatic
-                                                    W9 hand-off
+PICK a world → SHOOT coverage → DIRECT each shot → PLAY the cut → HAND OFF
+     W1              W2               W3               W4           W5
 ```
 
+Everything before FARM is local and instant; the only waits in the product
+are FARM generations (per-shot) — and they run in the background.
+
 ---
 
-## Act I — build the set's context
+## W0 · Setup (once per user)
 
-### W1 · Start a picture
-**Flow:** open app → title → (demo world prefilled, or paste `.spz` + collider) → start boarding.
-**APIs:** none (Marble CDN implicitly, via the viewer).
-**Friction / gaps:**
-- No world picker from the user's Marble account — URLs are pasted by hand.
-- No path for worlds that don't exist yet. *Planned: greybox blockout →
-  depth pano → `tasks:depthPano2DraftSplats` (Chisel `x2p-chisel-v1` + L3RM)
-  → draft splat world; or `tasks:farmT2i` image as a single identity anchor.*
+**Steps:** ⚙ settings → paste Marble Developer API key (worlds), Marble V2
+token + account (FARM tasks), Meridian env + key → "load models from
+registry" fills the model pickers.
+**APIs:** `GET /api/serving/v1/deployments`, `GET /api/model_registry/v1/inference_bundles`.
+**Failure states:** no keys → app fully works in mock (pencil-test animatic);
+registry unreachable → model fields stay free-text.
+**Done when:** model picker shows registry slugs; one live ⚡ returns an MP4.
 
-### W2 · Bank coverage (spatial context)
-**Flow:** Scout → `scan set` (8-stop yaw ring, one click) and/or `+ capture one`.
-Anchors appear on the plan canvas (green) and in the editor's context tray.
-**Why it exists:** FARM AR is stateless — the anchors ARE the model's memory.
-Banking coverage once amortizes context across every shot.
+## W1 · Pick a world
+
+**Steps:** open app → world picker: thumbnail grid of the account's worlds
+(`POST /marble/v1/worlds:list`), search by name/tag; or paste a world ID/URL.
+Selecting resolves everything from the world object — no URL pasting:
+- splat: chosen from `assets.splats.spz_urls` (LOD policy: light tier for
+  scouting; full tier available per shot for hero frames — *proposal*)
+- collider: `assets.mesh.collider_mesh_url` → walk collision + floor-follow
+- minimap: `minimap_url` + `minimap_metadata` → **plan-canvas underlay**
+- caption: `generated_recaption` / `world_prompt` → the project's
+  **set description**, grounding every FARM prompt in what the world is
+**APIs:** `worlds:list`, `GET /marble/v1/worlds/{world_id}`.
+**Failure states:** list blocked (CORS/key) → paste-ID path still works;
+ID fetch fails → error with the raw fields as manual fallback.
+**Done when:** stage shows the world, minimap shows its floor plan, and the
+project remembers `worldId` (re-resolvable, not frozen URLs).
+
+## W2 · Shoot coverage
+
+**Steps:** walk (WASD) → **shutter** (or `C`) → shot lands on the strip with
+pose/lens/angle inferred. Or expand the minimap → place cameras (press =
+position, pull = aim) over the world's real floor plan → rig button shoots
+them all → `A`/`R` take triage.
+First world load auto-banks a yaw-ring of anchors (*proposal — silent, ~4 s*).
+**APIs:** none — takes are splat renders; anchors are FARM's future context.
+**Done when:** 5 shots cost ≈ 5 drags + 1 click + 5 keys.
+
+## W3 · Direct each shot
+
+**Steps:** tap a strip frame → one overlay: draw the move (grease pencil),
+pick a move glyph, one action line, duration stepper. Drop a **cast chip**
+(character or prop) onto the plate — NB/gpt-image-1 composites it,
+pose-preserving, so the plate stays a valid anchor. Hit **⚡**:
+auto-context (nearest anchors, keyframe last, 32-frame budget), prompt =
+set description + movement grammar + action (action only when a cast plate
+exists — *prompt gating*), Operation polls in the background; strip dot
+tracks queued → running → done; MP4 replaces the pencil-test.
+**APIs:** `tasks:farmAr` (spec: `docs/farm_ar_api_spec.md`); 3P image edit.
+**Failure states:** FARM error → red dot + error on the frame, retry = ⚡
+again; mock mode → labeled simulated.
+**Done when:** a shot goes from framed → generated without reopening
+anything; closing the overlay never cancels a generation.
+
+## W4 · Play the cut
+
+**Steps:** ▶ in the toolbar → the strip plays as the animatic (FARM MP4s +
+labeled pencil-tests), space to pause, click the bar to scrub. Re-cut by
+dragging frames on the strip or the board view; captions/dialogue live on
+the board view.
 **APIs:** none.
-**Gaps:** no auto-scan on first load; world's source pano as a single equirect
-anchor is internal-only (feature ask, not client work).
+**Done when:** the cut plays through mixed FARM/pencil shots at real
+durations with no interaction needed.
+
+## W5 · Hand off
+
+**Steps:** `⋯` → shooting plan (printable table: slate, frame, lens, move,
+duration, action/dialogue) · export/import project JSON (self-contained,
+`schemas/storyboard.schema.json`).
+**Open for v1.x:** animatic MP4 export (MediaRecorder, like the viewer's
+flythrough recorder); post board/clips to Slack.
 
 ---
 
-## Act II — decide the shots
+## Act III power loop (carried from v1 map — top build priority after worlds)
 
-### W3 · Plan-mode shot-getting (primary, lowest-click)
-**Flow:** plan canvas → press to place / pull to aim (×N) → `⏺ shoot` →
-viewer auto-drives each setup → take review: `A` accept / `R` reject →
-accepted takes land on the board as numbered shots with pose + context wired.
-**Cost per 5 shots:** 5 drags, 1 click, 5 keys.
-**APIs:** none — takes are splat renders.
-**Gaps:** planned cameras are eye-height, level, default lens — no per-camera
-lens/height/pitch on the canvas yet; no single-take reshoot from review.
+**Batch + seeded take review:** "generate all" across the board → per-shot
+seed-varied retakes → the same A/R triage as W2, applied to generations.
+FARM stops being a button and becomes coverage.
 
-### W4 · Walk-mode shot-getting (hand-framed)
-**Flow:** walk (WASD) → `mark IN` (`C` in pointer lock; auto-creates a shot)
-→ optional `mark OUT` → `preview move` flies IN→OUT.
-**APIs:** none.
-**When it wins:** compositions the top-down plan can't express (low angles,
-through-doorway frames, precise foreground).
+## Non-goals for v1 (explicit)
 
-### W6 · Spec & sketch
-**Flow:** open panel → movement chip (14-move vocabulary, color by family) →
-lens/angle/duration → action/dialogue/notes → grease-pencil arrows over the
-frame. The spec compiles into the FARM prompt; the movement implies the OUT
-pose when none was marked.
-**APIs:** none.
-**Gaps:** action text is sent to FARM even when no character is in any anchor
-(asks the model to invent people — should be gated on a cast plate).
+- In-app world generation (greybox → `depthPano2DraftSplats`,
+  `worlds:generate`) — deferred; the client shapes are already typed.
+- Multiple worlds per project; per-scene worlds.
+- Proxy backend / team-shared persistence (browser-local only).
+- FARM T2I (revisit for cast refs in v1.x).
 
----
+## Open questions (next grill)
 
-## Act III — make the shots real
-
-### W5 · Cast pass (characters/props into plates)
-**Flow:** cast tab → character (description + refs: upload or generate) →
-editor → pick character → `composite into plate` → cast plate inherits the
-clean plate's pose and replaces it as the top anchor.
-**APIs:** 3P image edit — mock (default) / Gemini image / gpt-image-1,
-browser-direct, key in localStorage.
-**FARM T2I: not wired.** Natural first use: `generate ref` via
-`tasks:farmT2i` instead of the 3P provider (keeps character generation
-in-house; 3P still does the *compositing* since T2I can't edit a plate).
-**Gaps:** characters only (no `kind: prop`); no seed-varied re-composite;
-no cross-shot consistency check.
-
-### W7 · Generate the shot — **the FARM AR touchpoint**
-**Flow:** editor → context tray (ordering = model sequence; keyframe last;
-32-frame budget readout) → prompt preview (editable) → `generate` → phase
-ticker (staging/generating/assembling) → MP4 lands on the shot.
-**API:** `POST /api/v2[/accounts/{acct}]/tasks:farmAr` per
-`docs/farm_ar_api_spec.md`; Operation polled to `done` → `videoUrl`.
-Request = context anchors (posed base64 frames) + target cameras
-(IN→OUT interpolation, duration×fps) + shot-spec prompt + fps/seed/cfg/
-numSteps/model/depthScaleFactor.
-**Mock mode** (default + hosted preview): nothing leaves the browser.
-**Gaps — the highest-value build area:**
-- One shot per click; no **generate-all / queue view** across the board.
-- No **FARM take review**: regenerate with a different seed and A/R between
-  versions (the W3 triage pattern, applied to generations).
-- `depthScaleFactor` is a manual setting; should be derived once per project
-  from the world bbox and pinned automatically.
-- First live browser call may still hit the Cloud Armor/WAF `prompt`-body
-  block; needs one real smoke test.
-
-### W8 · Cut & review (animatic)
-**Flow:** animatic tab → play — FARM MP4s where they exist, Ken Burns
-pencil-tests (labeled) elsewhere → reorder on the board to re-cut →
-durations tune the rhythm.
-**APIs:** none (FARM videos already on the shots).
-**Gaps:** no animatic export (MP4 via MediaRecorder, like the viewer's
-flythrough recorder); no share link.
-
-### W9 · Hand-off
-**Flow:** shot list (printable shooting plan) · project JSON export/import
-(self-contained, schema in `schemas/storyboard.schema.json`).
-**Gaps:** browser-local only — no team sharing; no "post board to Slack".
-
----
-
-## API touchpoint summary
-
-| API | Used today | Where | Next natural use |
-|---|---|---|---|
-| FARM AR (`tasks:farmAr`) | ✅ live mode | W7 per-shot generate | batch generate + seeded retakes (W7) |
-| FARM T2I (`tasks:farmT2i`) | ❌ | — | cast refs (W5), greybox → depthPano2DraftSplats (W1) |
-| 3P image edit (NB / gpt-image-1) | ✅ | W5 compositing | props, seed variations |
-| Marble CDN / viewer | ✅ | W1–W4 rendering + poses | world picker from account (W1) |
-
-## Priority read (fewest clicks → most value)
-
-1. **W7 batch + FARM take review** — one "generate all" over the board, then
-   the same A/R triage users already know, per shot across seeds. This is the
-   workflow that makes FARM AR feel like coverage, not a button.
-2. **W5 FARM T2I for cast refs** — in-house character generation, one small
-   client addition.
-3. **W6 prompt gating** — only send action text when a cast plate exists.
-4. **W8 animatic export** — the shareable deliverable of the whole app.
-5. **W1 greybox → world** — blockout → depth pano → `tasks:depthPano2DraftSplats` for unbuilt sets.
+1. LOD policy — silent auto (light scout / full capture) or a visible toggle?
+2. When FARM footage lands, does it *replace* the panel automatically or go
+   through an accept step (take-review consistency says accept)?
+3. Animatic export target — MP4 file, or straight to Slack (#demo-spam)?
+4. v2 multi-world shape — per-scene binding vs freely-mixable sets.
