@@ -1,6 +1,6 @@
 // Project state: single active project, reducer + IndexedDB persistence.
 
-import { createContext, useContext, useEffect, useReducer, useRef } from "react";
+import { createContext, useContext, useEffect, useReducer } from "react";
 import type { CapturedFrame, CastMember, Pose, Project, SceneGroup, Shot, WorldRef } from "../model/types";
 import { newScene, newShot, nextShotNumber, normalizeProject, uid } from "../model/types";
 import { db } from "./db";
@@ -127,16 +127,15 @@ const LAST_PROJECT_KEY = "shotboard.lastProjectId";
 
 export function useProjectReducer() {
   const [project, dispatch] = useReducer(reducer, null);
-  const saveTimer = useRef<number | undefined>(undefined);
 
+  // Save immediately on every change. Project writes are small and dispatches
+  // are user-paced; a debounce here traded correctness (changes lost when the
+  // page unloads inside the window — unload-time IndexedDB writes abort) for
+  // a throughput win we don't need.
   useEffect(() => {
     if (!project) return;
     localStorage.setItem(LAST_PROJECT_KEY, project.id);
-    window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => {
-      db.putProject(project.id, project).catch((e) => console.error("save failed", e));
-    }, 400);
-    return () => window.clearTimeout(saveTimer.current);
+    db.putProject(project.id, project).catch((e) => console.error("save failed", e));
   }, [project]);
 
   return { project, dispatch };

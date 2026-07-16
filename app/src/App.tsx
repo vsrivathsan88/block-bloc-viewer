@@ -8,12 +8,17 @@ import Stage from "./views/Stage";
 import BoardSheet from "./components/BoardSheet";
 import FrameOverlay from "./components/FrameOverlay";
 import PlayerOverlay from "./components/PlayerOverlay";
+import WorldImport from "./components/WorldImport";
 import SettingsModal from "./views/SettingsModal";
 import ShotListView from "./views/ShotListView";
-import { IconBoard, IconClose, IconDots, IconGear, IconStage } from "./components/icons";
+import { IconBoard, IconClose, IconDots, IconGear, IconGlobe, IconStage } from "./components/icons";
 
 // The living-room demo world the viewer defaults to.
 const DEMO_SPZ = "https://cdn.marble.worldlabs.ai/bd1c3e7a-e412-4950-bb82-045f95f047a5/0dea05c6-6b15-4d51-bc0d-5f46b5e3df5a_ceramic_500k.spz";
+
+// Boot must run once per page, not once per mount — StrictMode double-mounts
+// would otherwise race two loadLastProject() calls and create two projects.
+let booted = false;
 
 export default function App() {
   const { project, dispatch } = useProjectReducer();
@@ -23,16 +28,25 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showPlan, setShowPlan] = useState(false); // printable shooting plan
   const [menuOpen, setMenuOpen] = useState(false);
+  const [worldImport, setWorldImport] = useState<null | { firstRun: boolean }>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   useFarmWatcher(project, dispatch);
 
-  // No onboarding card: wake up in the world.
+  // No onboarding card: wake up in the world. A brand-new project opens the
+  // world import once — paste a Marble URL and shoot in it.
   useEffect(() => {
+    if (booted) return;
+    booted = true;
     loadLastProject().then((p) => {
-      dispatch({
-        type: "load",
-        project: p ?? newProject("Untitled Picture", { spzUrl: DEMO_SPZ, title: "living-room" }),
-      });
+      if (p) {
+        dispatch({ type: "load", project: p });
+      } else {
+        dispatch({
+          type: "load",
+          project: newProject("Untitled Picture", { spzUrl: DEMO_SPZ, title: "living-room" }),
+        });
+        setWorldImport({ firstRun: true });
+      }
     });
   }, [dispatch]);
 
@@ -46,6 +60,10 @@ export default function App() {
           value={project.title}
           onChange={(e) => dispatch({ type: "rename", title: e.target.value })}
         />
+        <button className="world-chip" title="change world — paste a Marble URL" onClick={() => setWorldImport({ firstRun: false })}>
+          <IconGlobe />
+          <span>{project.world.title}</span>
+        </button>
         <div className="spacer" />
         <button className="ib" title="settings — world, FARM, cast pass" onClick={() => setShowSettings(true)}><IconGear /></button>
         <div className="menu-wrap">
@@ -105,6 +123,7 @@ export default function App() {
       <Stage onOpenShot={setOpenShotId} onPlay={() => setPlaying(true)} />
       {view === "board" && <BoardSheet onOpenShot={setOpenShotId} />}
 
+      {worldImport && <WorldImport firstRun={worldImport.firstRun} onClose={() => setWorldImport(null)} />}
       {openShotId && <FrameOverlay shotId={openShotId} onClose={() => setOpenShotId(null)} />}
       {playing && <PlayerOverlay onClose={() => setPlaying(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}

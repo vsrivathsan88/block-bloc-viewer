@@ -562,3 +562,19 @@ label.field {
 }
 .world-card:hover { background: var(--border-soft); }
 .world-card img, .world-card .ph { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; background: var(--border-soft); display: block; }
+
+/* world chip (topbar) + import dialog */
+.world-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 36px; padding: 0 14px;
+  border-radius: var(--radius-pill);
+  background: rgba(255,255,255,.14); color: #fff;
+  backdrop-filter: blur(8px);
+  font-size: 12px; max-width: 220px;
+}
+.world-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.world-chip:hover { background: rgba(255,255,255,.28); }
+.world-chip svg { flex: none; }
+.topbar-min.light .world-chip { background: var(--panel-bg); color: var(--ink); box-shadow: var(--elev-ring); }
+.topbar-min.light .world-chip:hover { background: var(--border-soft); }
+.modal.world-import { gap: 12px; }
