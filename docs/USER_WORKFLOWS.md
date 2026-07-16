@@ -37,7 +37,7 @@ registry unreachable → model fields stay free-text.
 (`POST /marble/v1/worlds:list`), search by name/tag; or paste a world ID/URL.
 Selecting resolves everything from the world object — no URL pasting:
 - splat: chosen from `assets.splats.spz_urls` (LOD policy: light tier for
-  scouting; full tier available per shot for hero frames — *proposal*)
+  scouting; tier switchable in settings)
 - collider: `assets.mesh.collider_mesh_url` → walk collision + floor-follow
 - minimap: `minimap_url` + `minimap_metadata` → **plan-canvas underlay**
 - caption: `generated_recaption` / `world_prompt` → the project's
@@ -54,7 +54,7 @@ project remembers `worldId` (re-resolvable, not frozen URLs).
 pose/lens/angle inferred. Or expand the minimap → place cameras (press =
 position, pull = aim) over the world's real floor plan → rig button shoots
 them all → `A`/`R` take triage.
-First world load auto-banks a yaw-ring of anchors (*proposal — silent, ~4 s*).
+First world load auto-banks a yaw-ring of anchors (built — silent, ~4 s).
 **APIs:** none — takes are splat renders; anchors are FARM's future context.
 **Done when:** 5 shots cost ≈ 5 drags + 1 click + 5 keys.
 
@@ -66,7 +66,7 @@ pick a move glyph, one action line, duration stepper. Drop a **cast chip**
 pose-preserving, so the plate stays a valid anchor. Hit **⚡**:
 auto-context (nearest anchors, keyframe last, 32-frame budget), prompt =
 set description + movement grammar + action (action only when a cast plate
-exists — *prompt gating*), Operation polls in the background; strip dot
+exists — built), Operation polls in the background; strip dot
 tracks queued → running → done; MP4 replaces the pencil-test.
 **APIs:** `tasks:farmAr` (spec: `docs/farm_ar_api_spec.md`); 3P image edit.
 **Failure states:** FARM error → red dot + error on the frame, retry = ⚡
@@ -89,16 +89,16 @@ durations with no interaction needed.
 **Steps:** `⋯` → shooting plan (printable table: slate, frame, lens, move,
 duration, action/dialogue) · export/import project JSON (self-contained,
 `schemas/storyboard.schema.json`).
-**Open for v1.x:** animatic MP4 export (MediaRecorder, like the viewer's
-flythrough recorder); post board/clips to Slack.
+**Built:** flythrough webm export (toolbar) — the viewer drives every shot's
+camera move in board order. **Open for v1.x:** post board/clips to Slack.
 
 ---
 
 ## Act III power loop (carried from v1 map — top build priority after worlds)
 
-**Batch + seeded take review:** "generate all" across the board → per-shot
-seed-varied retakes → the same A/R triage as W2, applied to generations.
-FARM stops being a button and becomes coverage.
+**Built:** "⚡ generate all" (menu) + seed-bumped retakes (every ⚡ press uses
+a fresh seed). **Open:** A/R triage BETWEEN generations (versions kept, pick
+the best) — the last piece of "FARM as coverage".
 
 ## Non-goals for v1 (explicit)
 

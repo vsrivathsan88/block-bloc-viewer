@@ -549,3 +549,16 @@ label.field {
   border-radius: var(--radius-pill); padding: 7px 14px;
 }
 .export-toast.rec-toast { background: color-mix(in srgb, var(--danger), transparent 20%); }
+
+/* world library picker */
+.world-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px; max-height: 260px; overflow-y: auto;
+}
+.world-card {
+  display: flex; flex-direction: column; gap: 4px; padding: 6px;
+  background: var(--panel-bg); box-shadow: var(--elev-ring);
+  border-radius: var(--r); color: var(--ink); font-size: 11px; text-align: left;
+}
+.world-card:hover { background: var(--border-soft); }
+.world-card img, .world-card .ph { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; background: var(--border-soft); display: block; }

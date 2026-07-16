@@ -36,6 +36,10 @@ interface Props {
   onPlanned: (next: PlannedCam[]) => void;
   /** "mini" = collapsed corner map: room + shot dots only, no labels/anchors */
   detail?: "mini" | "full";
+  /** recorded camera paths (XZ waypoints), drawn as smooth curves */
+  paths?: { pts: [number, number][] }[];
+  /** the world's own minimap image, drawn under the grid across the bbox */
+  underlayUrl?: string;
 }
 
 export function yawOfQuat(q: Quat): number {
@@ -49,9 +53,10 @@ export function yawQuat(yaw: number): Quat {
 
 const PAD = 26; // px margin around the bbox
 
-export default function PlanCanvas({ bbox, anchors, shots, planned, onPlanned, detail = "full" }: Props) {
+export default function PlanCanvas({ bbox, anchors, shots, planned, onPlanned, detail = "full", paths, underlayUrl }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drag = useRef<{ cam: PlannedCam; moved: boolean } | null>(null);
+  const underlay = useRef<{ url: string; img: HTMLImageElement; ready: boolean } | null>(null);
 
   // world→canvas mapping (recomputed per render from the element size)
   function mapping(canvas: HTMLCanvasElement) {
@@ -92,9 +97,26 @@ export default function PlanCanvas({ bbox, anchors, shots, planned, onPlanned, d
     const [x0, z0] = m.toPx(bbox.min[0], bbox.min[1]);
     const [x1, z1] = m.toPx(bbox.max[0], bbox.max[1]);
 
-    // floor
+    // floor: the world's own minimap when it has one, else a flat fill
+    // (metadata-less approximation: the minimap is assumed to cover the bbox)
     ctx.fillStyle = FLOOR;
     ctx.fillRect(x0, z0, x1 - x0, z1 - z0);
+    if (underlayUrl) {
+      if (underlay.current?.url !== underlayUrl) {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        const entry = { url: underlayUrl, img, ready: false };
+        underlay.current = entry;
+        img.onload = () => { entry.ready = true; draw(); };
+        img.src = underlayUrl;
+      }
+      if (underlay.current?.ready) {
+        ctx.save();
+        ctx.globalAlpha = 0.45;
+        ctx.drawImage(underlay.current.img, x0, z0, x1 - x0, z1 - z0);
+        ctx.restore();
+      }
+    }
 
     // 1m grid, clipped to the room
     ctx.save();
@@ -146,6 +168,31 @@ export default function PlanCanvas({ bbox, anchors, shots, planned, onPlanned, d
       ctx.fill();
     };
 
+    // recorded camera paths — smooth curve through the waypoints
+    if (paths?.length) {
+      ctx.strokeStyle = RED;
+      ctx.lineWidth = mini ? 1 : 1.5;
+      ctx.globalAlpha = 0.75;
+      for (const path of paths) {
+        const px = path.pts.map(([x, z]) => m.toPx(x, z));
+        if (px.length < 2) continue;
+        ctx.beginPath();
+        ctx.moveTo(px[0][0], px[0][1]);
+        for (let i = 1; i < px.length - 1; i++) {
+          ctx.quadraticCurveTo(px[i][0], px[i][1], (px[i][0] + px[i + 1][0]) / 2, (px[i][1] + px[i + 1][1]) / 2);
+        }
+        ctx.lineTo(px[px.length - 1][0], px[px.length - 1][1]);
+        ctx.stroke();
+        if (!mini) {
+          ctx.beginPath();
+          ctx.arc(px[px.length - 1][0], px[px.length - 1][1], 2.5, 0, Math.PI * 2);
+          ctx.fillStyle = RED;
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+
     if (!mini) {
       for (const a of anchors) {
         cam(a.pose.position[0], a.pose.position[2], yawOfQuat(a.pose.quaternion), GREEN, { r: 2, wedge: 13, alpha: 0.1 });
@@ -174,7 +221,7 @@ export default function PlanCanvas({ bbox, anchors, shots, planned, onPlanned, d
     obs.observe(canvas);
     return () => obs.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bbox, anchors, shots, planned, detail]);
+  }, [bbox, anchors, shots, planned, detail, paths, underlayUrl]);
 
   function eventWorld(e: React.PointerEvent): [number, number] {
     const canvas = canvasRef.current!;

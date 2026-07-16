@@ -8,6 +8,10 @@ import {
   loadMeridianConfig, loadModelCatalog, refreshModelCatalog, saveMeridianConfig,
   type MeridianConfig, type MeridianEnv, type ModelCatalog,
 } from "../marble/meridian";
+import {
+  getWorld, listWorlds, loadDevApiConfig, pickScoutTier, saveDevApiConfig,
+  type DevApiConfig, type WorldListing,
+} from "../marble/worlds";
 import { loadEditConfig, saveEditConfig, type EditConfig } from "../edit/imageEdit";
 import { useProject } from "../store/useProject";
 
@@ -40,10 +44,91 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     }
   }
 
+  const [dev, setDev] = useState<DevApiConfig>(loadDevApiConfig());
+  const [worldIdInput, setWorldIdInput] = useState(project.world.worldId ?? "");
+  const [worldNote, setWorldNote] = useState("");
+  const [browsing, setBrowsing] = useState(false);
+  const [library, setLibrary] = useState<WorldListing[] | null>(null);
+
+  async function resolveWorld(id: string) {
+    setWorldNote("resolving…");
+    try {
+      saveDevApiConfig(dev);
+      const w = await getWorld(dev, id);
+      setWorld({
+        spzUrl: pickScoutTier(w.spzUrls) ?? world.spzUrl,
+        colliderUrl: w.colliderUrl,
+        title: w.name,
+        worldId: w.worldId,
+        caption: w.caption,
+        minimapUrl: w.minimapUrl,
+        spzUrls: Object.keys(w.spzUrls).length ? w.spzUrls : undefined,
+      });
+      setWorldIdInput(w.worldId);
+      setWorldNote(`resolved · ${Object.keys(w.spzUrls).length} splat tier(s)${w.caption ? " · caption ✓" : ""}${w.minimapUrl ? " · minimap ✓" : ""}`);
+      setBrowsing(false);
+    } catch (e) {
+      setWorldNote(String(e));
+    }
+  }
+
+  async function browse() {
+    setBrowsing(true);
+    setWorldNote("");
+    try {
+      saveDevApiConfig(dev);
+      setLibrary(await listWorlds(dev));
+    } catch (e) {
+      setLibrary(null);
+      setWorldNote(String(e));
+      setBrowsing(false);
+    }
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>World</h2>
+        <div className="form-grid">
+          <label className="field">developer API base
+            <input value={dev.baseUrl} onChange={(e) => setDev({ ...dev, baseUrl: e.target.value })} />
+          </label>
+          <label className="field">developer API key
+            <input type="password" value={dev.apiKey} onChange={(e) => setDev({ ...dev, apiKey: e.target.value })} />
+          </label>
+        </div>
+        <label className="field">Marble world id / URL
+          <div style={{ display: "flex", gap: 6 }}>
+            <input style={{ flex: 1 }} value={worldIdInput} placeholder="world_…"
+              onChange={(e) => setWorldIdInput(e.target.value)} />
+            <button className="ghost" disabled={!worldIdInput.trim()} onClick={() => resolveWorld(worldIdInput)}>resolve</button>
+            <button className="ghost" onClick={browse}>browse…</button>
+          </div>
+        </label>
+        {browsing && library && (
+          <div className="world-grid">
+            {library.map((w) => (
+              <button key={w.worldId} className="world-card" onClick={() => resolveWorld(w.worldId)}>
+                {w.thumbUrl ? <img src={w.thumbUrl} alt="" /> : <span className="ph" />}
+                <span>{w.name}</span>
+              </button>
+            ))}
+            {!library.length && <div className="hint">no worlds returned</div>}
+          </div>
+        )}
+        {worldNote && <div className="hint">{worldNote}</div>}
+        {world.spzUrls && Object.keys(world.spzUrls).length > 1 && (
+          <label className="field">splat quality
+            <select
+              value={world.spzUrl}
+              onChange={(e) => setWorld({ ...world, spzUrl: e.target.value })}
+            >
+              {Object.entries(world.spzUrls).map(([tier, url]) => (
+                <option key={tier} value={url}>{tier}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="field">name
           <input value={world.title} onChange={(e) => setWorld({ ...world, title: e.target.value })} />
         </label>
@@ -52,6 +137,9 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         </label>
         <label className="field">collider GLB URL (optional)
           <input value={world.colliderUrl ?? ""} onChange={(e) => setWorld({ ...world, colliderUrl: e.target.value || undefined })} />
+        </label>
+        <label className="field">set description (grounds FARM prompts; auto-filled from the world's caption)
+          <textarea rows={2} value={world.caption ?? ""} onChange={(e) => setWorld({ ...world, caption: e.target.value || undefined })} />
         </label>
 
         <h2 style={{ marginTop: 10 }}>Marble API</h2>

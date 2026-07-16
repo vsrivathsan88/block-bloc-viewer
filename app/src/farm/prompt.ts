@@ -29,12 +29,21 @@ const ANGLE_PHRASE: Record<Shot["angle"], string> = {
   "pov": "as a character POV",
 };
 
-export function buildPrompt(shot: Shot): string {
+export interface PromptContext {
+  /** the world's caption (generated_recaption / world_prompt) */
+  set?: string;
+  /** include the action line only when a cast plate exists — otherwise the
+   * prompt asks FARM to invent people the context doesn't show */
+  withAction: boolean;
+}
+
+export function buildPrompt(shot: Shot, ctx: PromptContext = { withAction: true }): string {
   const parts = [
     `${MOVEMENT_PHRASE[shot.movement]} ${ANGLE_PHRASE[shot.angle]}, ${shot.lensMm}mm lens.`,
   ];
-  if (shot.action.trim()) parts.push(shot.action.trim());
+  if (ctx.set?.trim()) parts.push(`The scene: ${ctx.set.trim()}.`);
+  if (ctx.withAction && shot.action.trim()) parts.push(shot.action.trim());
   if (shot.notes.trim()) parts.push(shot.notes.trim());
-  parts.push("Cinematic interior, consistent lighting and geometry with the reference views.");
+  parts.push("Consistent lighting and geometry with the reference views.");
   return parts.join(" ");
 }

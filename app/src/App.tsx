@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { newProject } from "./model/types";
 import { exportProject, importProject } from "./lib/exportImport";
+import { generateAll } from "./farm/generateShot";
 import { useFarmWatcher } from "./store/farmWatcher";
 import { loadLastProject, ProjectContext, useProjectReducer } from "./store/useProject";
 import Stage from "./views/Stage";
@@ -51,6 +52,15 @@ export default function App() {
           <button className="ib" title="more" onClick={() => setMenuOpen(!menuOpen)}><IconDots /></button>
           {menuOpen && (
             <div className="menu" onMouseLeave={() => setMenuOpen(false)}>
+              <button
+                onClick={async () => {
+                  setMenuOpen(false);
+                  const [ok, failed] = await generateAll(project, dispatch);
+                  if (failed) alert(`${ok} submitted, ${failed} failed`);
+                }}
+              >
+                ⚡ generate all
+              </button>
               <button onClick={() => { setMenuOpen(false); setShowPlan(true); }}>shooting plan</button>
               <button onClick={() => { setMenuOpen(false); exportProject(project); }}>export</button>
               <button onClick={() => { setMenuOpen(false); fileInput.current?.click(); }}>import</button>

@@ -4,18 +4,17 @@
 import { useEffect, useState } from "react";
 import type { CapturedFrame, CastMember, Shot } from "../model/types";
 import { frameById, MOVEMENTS, uid } from "../model/types";
-import { buildPrompt } from "../farm/prompt";
-import { buildFarmArRequest, loadFarmConfig, submitFarmAr } from "../farm/client";
+import { loadFarmConfig } from "../farm/client";
+import { generateShot } from "../farm/generateShot";
 import { loadMarbleConfig } from "../marble/client";
 import { editImage, loadEditConfig } from "../edit/imageEdit";
-import { impliedEndPose, MOVEMENT_GLYPH, movementFamily } from "../lib/movement";
-import { autoContextIds } from "../lib/inference";
+import { MOVEMENT_GLYPH, movementFamily } from "../lib/movement";
 import SketchCanvas from "./SketchCanvas";
 import { db } from "../store/db";
 import { getImageData, primeImageCache, useImage, useProject } from "../store/useProject";
 import {
   IconArrow, IconBolt, IconBox, IconCheck, IconClose, IconPencil, IconPerson,
-  IconPersonPlus, IconRevert, IconTrash, IconUndo,
+  IconPersonPlus, IconPlay, IconRevert, IconTrash, IconUndo,
 } from "./icons";
 
 const COLORS = ["#3d3a35", "#e5484d", "#3d648f"];
@@ -109,49 +108,21 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
 
   async function generate() {
     if (!shot || !keyframe || !cleanFrame) return;
-    const cfg = loadFarmConfig();
-    if (cfg.mode === "live" && !loadMarbleConfig().token) return setNote("live mode needs a token — open settings");
+    if (loadFarmConfig().mode === "live" && !loadMarbleConfig().token) {
+      return setNote("live mode needs a token — open settings");
+    }
     try {
       setNote("");
-      // auto context: nearest anchors + keyframe last; cast plate substitutes
-      const ids = autoContextIds(project, shot).map((id) =>
-        id === shot.frameId && shot.castFrameId ? shot.castFrameId : id,
-      );
-      const ctx = [];
-      for (const id of ids) {
-        const f = frameById(project, id);
-        const dataUrl = f && (await getImageData(f.imageId));
-        if (f && dataUrl) ctx.push({ frame: f, imageDataUrl: dataUrl });
-      }
-      if (!ctx.length) return setNote("no frame yet");
-      const endPose = shot.endPose ?? impliedEndPose(shot.movement, keyframe.pose);
-      const body = buildFarmArRequest({
-        prompt: buildPrompt(shot),
-        contextFrames: ctx,
-        startPose: keyframe.pose,
-        endPose,
-        path: shot.pathPoses,
-        fovDeg: keyframe.fov,
-        frameCount: Math.round(shot.durationSec * cfg.fps),
-        width: Math.round(480 * (keyframe.aspect || 16 / 9)),
-        height: 480,
-        cfg,
-      });
-      const handle = await submitFarmAr(cfg, body);
-      patch({
-        farm: {
-          taskId: handle.taskId,
-          mock: handle.mock,
-          status: "queued",
-          prompt: buildPrompt(shot),
-          contextFrameIds: ids,
-          frameCount: body.targetFrameCount as number,
-          submittedAt: Date.now(),
-        },
-      });
+      await generateShot(project, shot, dispatch);
     } catch (e) {
       setNote(String(e));
     }
+  }
+
+  function previewMove() {
+    if (!shot) return;
+    onClose();
+    window.dispatchEvent(new CustomEvent("shotboard:preview-move", { detail: { shotId: shot.id } }));
   }
 
   const generating = shot.farm?.status === "queued" || shot.farm?.status === "running";
@@ -180,6 +151,9 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
           ))}
           <button className="ib" title="undo stroke" disabled={!shot.strokes.length}
             onClick={() => patch({ strokes: shot.strokes.slice(0, -1) })}><IconUndo /></button>
+          <button className="ib" title="preview the move in the world" disabled={!keyframe} onClick={previewMove}>
+            <IconPlay />
+          </button>
 
           <span className="sep" />
 
@@ -223,8 +197,16 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
             )}
           </div>
           <div className="spacer" />
-          <button className="ib big-ib bolt" title={loadFarmConfig().mode === "mock" ? "make it move (mock)" : "make it move — FARM AR"}
-            disabled={!keyframe || generating || busy} onClick={generate}>
+          <button
+            className="ib big-ib bolt"
+            title={
+              shot.farm && shot.farm.status !== "queued" && shot.farm.status !== "running"
+                ? "retake — new seed"
+                : loadFarmConfig().mode === "mock" ? "make it move (mock)" : "make it move — FARM AR"
+            }
+            disabled={!keyframe || generating || busy}
+            onClick={generate}
+          >
             <IconBolt />
           </button>
           <button className="ib" title="delete shot"

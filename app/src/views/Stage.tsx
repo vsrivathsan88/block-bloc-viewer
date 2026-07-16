@@ -70,6 +70,73 @@ export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: str
     [project],
   );
 
+  const pathLines = useMemo(
+    () =>
+      allShots(project).flatMap(({ shot }) =>
+        shot.pathPoses && shot.pathPoses.length >= 2
+          ? [{ pts: shot.pathPoses.map((p) => [p.position[0], p.position[2]] as [number, number]) }]
+          : [],
+      ),
+    [project],
+  );
+
+  // preview a shot's move in the world (dispatched from the frame overlay)
+  useEffect(() => {
+    const h = (e: Event) => {
+      const shotId = (e as CustomEvent).detail?.shotId as string | undefined;
+      const found = allShots(project).find((x) => x.shot.id === shotId);
+      const w = iframeRef.current?.contentWindow as (Window & { __recording?: boolean }) | null;
+      if (!found || !w || !getViewer(iframeRef.current)) return;
+      const kf = frameById(project, found.shot.frameId);
+      if (!kf) return;
+      const poses = found.shot.pathPoses ?? [kf.pose, found.shot.endPose ?? impliedEndPose(found.shot.movement, kf.pose)];
+      w.__recording = true;
+      const t0 = performance.now();
+      const durMs = found.shot.durationSec * 1000;
+      const step = () => {
+        const t = Math.min(1, (performance.now() - t0) / durMs);
+        const ease = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+        setViewerPose(iframeRef.current, pathPoseAt(poses, ease));
+        if (t < 1) requestAnimationFrame(step);
+        else w.__recording = false;
+      };
+      requestAnimationFrame(step);
+    };
+    window.addEventListener("shotboard:preview-move", h);
+    return () => window.removeEventListener("shotboard:preview-move", h);
+  }, [project]);
+
+  // Auto-bank coverage on first load of a world: a quiet 8-stop yaw ring at
+  // the capture pose — FARM anchors exist before the user does anything.
+  const autoScanned = useRef(false);
+  useEffect(() => {
+    if (!bbox || autoScanned.current || project.frames.length > 0) return;
+    autoScanned.current = true;
+    (async () => {
+      const v = getViewer(iframeRef.current);
+      const w = iframeRef.current?.contentWindow as (Window & { __recording?: boolean }) | null;
+      if (!v || !w) return;
+      setExportNote("scanning the set…");
+      w.__recording = true;
+      const p = v.camera.position, q = v.camera.quaternion;
+      const orig = { position: [p.x, p.y, p.z] as [number, number, number], quaternion: [q.x, q.y, q.z, q.w] as [number, number, number, number] };
+      try {
+        for (let i = 0; i < 8; i++) {
+          const yaw = (i / 8) * Math.PI * 2;
+          setViewerPose(iframeRef.current, { position: orig.position, quaternion: yawQuat(yaw) });
+          await new Promise((r) => setTimeout(r, 450));
+          const cap = captureFrame(iframeRef.current);
+          if (cap) await bankFrame(cap, `set ${Math.round((yaw * 180) / Math.PI)}°`);
+        }
+      } finally {
+        setViewerPose(iframeRef.current, orig);
+        w.__recording = false;
+        setExportNote("");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bbox]);
+
   async function bankFrame(cap: NonNullable<ReturnType<typeof captureFrame>>, label: string): Promise<CapturedFrame> {
     const imageId = uid();
     primeImageCache(imageId, cap.dataUrl);
@@ -303,6 +370,8 @@ export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: str
           anchors={project.frames}
           shots={shotMarks}
           planned={planned}
+          paths={pathLines}
+          underlayUrl={project.world.minimapUrl}
           detail={mapOpen ? "full" : "mini"}
           onPlanned={(p) => { setPlanned(p); if (!mapOpen) setMapOpen(true); }}
         />

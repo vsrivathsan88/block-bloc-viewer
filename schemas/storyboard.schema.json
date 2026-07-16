@@ -68,6 +68,25 @@
             },
             "title": {
               "type": "string"
+            },
+            "worldId": {
+              "type": "string",
+              "description": "Marble world id; fields re-resolvable via GET /marble/v1/worlds/{id}"
+            },
+            "caption": {
+              "type": "string",
+              "description": "generated_recaption/world_prompt \u2014 grounds FARM prompts"
+            },
+            "minimapUrl": {
+              "type": "string",
+              "format": "uri"
+            },
+            "spzUrls": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "splat tiers for LOD switching"
             }
           }
         },

@@ -82,6 +82,8 @@ export interface FarmGeneration {
   error?: string;
   /** live progress phase: staging / generating / assembling */
   phase?: string;
+  /** retake counter — added to the configured seed so regenerations vary */
+  seedOffset?: number;
   submittedAt: number;
   mock?: boolean;
 }
@@ -128,6 +130,15 @@ export interface WorldRef {
   spzUrl: string;
   colliderUrl?: string;
   title: string;
+  /** Marble world id — when set, the fields above were resolved from the
+   * Developer API and can be re-resolved/re-tiered */
+  worldId?: string;
+  /** generated_recaption / world_prompt — grounds every FARM prompt */
+  caption?: string;
+  /** the world's own top-down minimap → plan-canvas underlay */
+  minimapUrl?: string;
+  /** all splat tiers, for LOD switching */
+  spzUrls?: Record<string, string>;
 }
 
 export interface Project {
