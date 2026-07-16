@@ -99,6 +99,10 @@ export interface Shot {
   castFrameId?: string;
   /** marked OUT pose — makes the camera movement literal */
   endPose?: Pose;
+  /** recorded camera path (waypoints, first ≈ the keyframe pose). When set
+   * it overrides movement/endPose: FARM targets and previews sample the
+   * spline through these by arc length. */
+  pathPoses?: Pose[];
   /** ordered FARM AR context anchors; defaults to [frameId] at capture.
    * User-editable in the shot editor's context tray. */
   contextFrameIds: string[];

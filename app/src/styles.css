@@ -539,3 +539,13 @@ label.field {
 .chip-cast.prop { border-radius: 8px; background: var(--fg-2); }
 .minimap:not(.open) { width: 108px; opacity: .85; }
 .minimap:not(.open):hover { opacity: 1; }
+
+.ib.rec { background: var(--danger); color: #fff; animation: pulse 1.2s infinite; }
+.export-toast {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: 190px; z-index: 11;
+  font-size: 11px; color: #fff;
+  background: rgba(15,14,22,.8); backdrop-filter: blur(8px);
+  border-radius: var(--radius-pill); padding: 7px 14px;
+}
+.export-toast.rec-toast { background: color-mix(in srgb, var(--danger), transparent 20%); }

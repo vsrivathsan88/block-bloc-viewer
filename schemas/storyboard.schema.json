@@ -386,6 +386,13 @@
               "type": "boolean"
             }
           }
+        },
+        "pathPoses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pose"
+          },
+          "description": "recorded camera path waypoints; overrides movement/endPose \u2014 targets sample the arc-length spline through these"
         }
       }
     }

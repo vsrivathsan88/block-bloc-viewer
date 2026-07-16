@@ -9,12 +9,14 @@ import {
   captureFrame, getViewer, getWorldBboxXZ, onViewerKey, setViewerPose, VIEWER_PATH,
 } from "../lib/viewerBridge";
 import { DEMO_MODE, DEMO_VIEWER_HTML } from "../lib/demoViewer";
+import { impliedEndPose } from "../lib/movement";
+import { pathPoseAt, shouldKeepWaypoint } from "../lib/path";
 import { db } from "../store/db";
 import { primeImageCache, useProject } from "../store/useProject";
 import PlanCanvas, { type BboxXZ, type PlannedCam, type ShotMark, yawOfQuat, yawQuat } from "../components/PlanCanvas";
 import TakeReview, { type Take } from "../components/TakeReview";
 import FilmStrip from "../components/FilmStrip";
-import { IconCameraRig, IconMap, IconPlay, IconShutter } from "../components/icons";
+import { IconCameraRig, IconFilm, IconMap, IconPath, IconPlay, IconShutter } from "../components/icons";
 
 const FALLBACK_BBOX: BboxXZ = { min: [-4, -4], max: [4, 4] };
 
@@ -27,7 +29,12 @@ export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: str
   const [mapOpen, setMapOpen] = useState(false);
   const [bbox, setBbox] = useState<BboxXZ | null>(null);
   const [flashId, setFlashId] = useState(0); // shutter flash animation
+  const [exportNote, setExportNote] = useState("");
   const nextNumRef = useRef(1);
+
+  // path recording: walk the move, it becomes the shot's camera path
+  const [recordingPath, setRecordingPath] = useState(false);
+  const pathRec = useRef<{ poses: import("../model/types").Pose[]; cap: NonNullable<ReturnType<typeof captureFrame>>; startedAt: number; timer: number } | null>(null);
 
   const viewerSrc = useMemo(() => {
     const p = new URLSearchParams();
@@ -93,6 +100,109 @@ export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: str
         angle: inferAngle(frame),
       },
     });
+  }
+
+  // Record a camera path by walking it (borrowed concept: Marble camera
+  // pathing, wlt#17114). Start = capture the keyframe; while recording, bank
+  // a waypoint whenever the camera moves/turns enough; stop = a shot whose
+  // duration is the real time walked and whose FARM targets follow the path.
+  function togglePathRecord() {
+    if (recordingPath) {
+      const rec = pathRec.current;
+      pathRec.current = null;
+      setRecordingPath(false);
+      if (!rec) return;
+      window.clearInterval(rec.timer);
+      finishPathShot(rec);
+      return;
+    }
+    const cap = captureFrame(iframeRef.current);
+    if (!cap) return;
+    const state = { poses: [cap.pose], cap, startedAt: Date.now(), timer: 0 };
+    state.timer = window.setInterval(() => {
+      const c = captureFrame(iframeRef.current === null ? null : iframeRef.current);
+      if (!c) return;
+      const last = state.poses[state.poses.length - 1];
+      if (shouldKeepWaypoint(last, c.pose)) state.poses.push(c.pose);
+    }, 250);
+    pathRec.current = state;
+    setRecordingPath(true);
+    setFlashId((n) => n + 1);
+  }
+
+  async function finishPathShot(rec: NonNullable<typeof pathRec.current>) {
+    const durationSec = Math.max(1, Math.round(((Date.now() - rec.startedAt) / 1000) * 2) / 2);
+    const scene = project.scenes[project.scenes.length - 1];
+    const num = nextShotNumber(scene);
+    const frame = await bankFrame(rec.cap, `shot ${num}`);
+    dispatch({
+      type: "addShot",
+      sceneId: scene.id,
+      shot: {
+        ...newShot(num),
+        frameId: frame.id,
+        contextFrameIds: [frame.id],
+        lensMm: inferLensMm(rec.cap.fov),
+        angle: inferAngle(frame),
+        durationSec,
+        pathPoses: rec.poses.length >= 2 ? rec.poses : undefined,
+        movement: rec.poses.length >= 2 ? "handheld" : "static",
+      },
+    });
+  }
+
+  // Flythrough export (borrowed concept: wlt#17114's video export): drive
+  // the viewer through every shot's camera move in board order, recording
+  // the canvas — the whole cut as one webm.
+  async function exportFlythrough() {
+    const v = getViewer(iframeRef.current);
+    const w = iframeRef.current?.contentWindow as (Window & { __recording?: boolean }) | null;
+    const shotsWithFrames = allShots(project).filter(({ shot }) => frameById(project, shot.frameId));
+    if (!v || !w || !shotsWithFrames.length) return;
+    const canvas = v.renderer.domElement as HTMLCanvasElement & { captureStream(fps: number): MediaStream };
+    const mime = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
+    const stream = canvas.captureStream(30);
+    const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
+    const chunks: Blob[] = [];
+    rec.ondataavailable = (e) => e.data?.size && chunks.push(e.data);
+    const p = v.camera.position, q = v.camera.quaternion;
+    const orig = { position: [p.x, p.y, p.z] as [number, number, number], quaternion: [q.x, q.y, q.z, q.w] as [number, number, number, number] };
+    w.__recording = true;
+    rec.start();
+    try {
+      for (let i = 0; i < shotsWithFrames.length; i++) {
+        const { shot } = shotsWithFrames[i];
+        setExportNote(`exporting ${i + 1}/${shotsWithFrames.length}`);
+        const kf = frameById(project, shot.frameId)!;
+        const poses = shot.pathPoses ?? [kf.pose, shot.endPose ?? impliedEndPose(shot.movement, kf.pose)];
+        const durMs = shot.durationSec * 1000;
+        const t0 = performance.now();
+        await new Promise<void>((resolve) => {
+          const step = () => {
+            const t = Math.min(1, (performance.now() - t0) / durMs);
+            const e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+            setViewerPose(iframeRef.current, pathPoseAt(poses, e));
+            if (t < 1) requestAnimationFrame(step);
+            else resolve();
+          };
+          requestAnimationFrame(step);
+        });
+      }
+    } finally {
+      await new Promise<void>((resolve) => {
+        rec.onstop = () => resolve();
+        rec.stop();
+      });
+      setViewerPose(iframeRef.current, orig);
+      w.__recording = false;
+      setExportNote("");
+    }
+    const blob = new Blob(chunks, { type: mime || "video/webm" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${project.title.replace(/[^\w-]+/g, "_") || "shotboard"}-flythrough.webm`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
 
   // Multi-camera: shoot every planned camera, then triage.
@@ -213,18 +323,31 @@ export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: str
         )}
       </div>
 
-      {/* Figma-style floating toolbar: map · shutter · play */}
+      {/* Figma-style floating toolbar: map · path · shutter · export · play */}
       <div className="toolbar">
         <button className={`ib ${mapOpen ? "on" : ""}`} title="camera plan" onClick={() => { setMapOpen(!mapOpen); if (mapOpen) setPlanned([]); }}>
           <IconMap />
         </button>
+        <button
+          className={`ib ${recordingPath ? "rec" : ""}`}
+          title={recordingPath ? "stop — path becomes the shot" : "record a camera path: press, walk the move, press again"}
+          onClick={togglePathRecord}
+        >
+          <IconPath />
+        </button>
         <button className="shutter" title="shoot this frame (C)" onClick={shutter}>
           <IconShutter />
+        </button>
+        <button className="ib" title="export flythrough (.webm)" onClick={exportFlythrough} disabled={!!exportNote}>
+          <IconFilm />
         </button>
         <button className="ib" title="play the board" onClick={onPlay}>
           <IconPlay />
         </button>
       </div>
+
+      {exportNote && <div className="export-toast">{exportNote}</div>}
+      {recordingPath && <div className="export-toast rec-toast">⏺ recording path — walk the move, press again to cut</div>}
 
       <FilmStrip project={project} activeShotId={null} onOpen={onOpenShot} onMove={moveFlat} />
 

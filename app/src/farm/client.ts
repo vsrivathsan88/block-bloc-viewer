@@ -15,6 +15,7 @@
 
 import type { CapturedFrame, Pose } from "../model/types";
 import { poseLerp } from "../lib/pose";
+import { samplePath } from "../lib/path";
 import { loadMarbleConfig, pollOperation, submitTask } from "../marble/client";
 
 export const TRAINED_SEQ_BUDGET = 32;
@@ -75,6 +76,9 @@ export interface BuildRequestInput {
   contextFrames: { frame: CapturedFrame; imageDataUrl: string }[];
   startPose: Pose;
   endPose: Pose;
+  /** recorded waypoints; when present (≥2) the camera path is the arc-length
+   * spline through these instead of the start→end lerp */
+  path?: Pose[];
   fovDeg: number;
   frameCount: number;
   width: number;
@@ -90,9 +94,11 @@ export function buildFarmArRequest(input: BuildRequestInput): Record<string, unk
     imageBase64: imageDataUrl.replace(/^data:image\/\w+;base64,/, ""),
     camera: cameraJson(frame.pose, frame.fov, input.width, input.height),
   }));
-  const targetCameras = Array.from({ length: n }, (_, i) =>
-    cameraJson(poseLerp(input.startPose, input.endPose, i / (n - 1)), input.fovDeg, input.width, input.height),
-  );
+  const pathPoses =
+    input.path && input.path.length >= 2
+      ? samplePath(input.path, n)
+      : Array.from({ length: n }, (_, i) => poseLerp(input.startPose, input.endPose, i / (n - 1)));
+  const targetCameras = pathPoses.map((p) => cameraJson(p, input.fovDeg, input.width, input.height));
   const body: Record<string, unknown> = {
     prompt: input.prompt,
     referenceImages,

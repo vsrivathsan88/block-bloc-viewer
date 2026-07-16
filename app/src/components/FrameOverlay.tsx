@@ -130,6 +130,7 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
         contextFrames: ctx,
         startPose: keyframe.pose,
         endPose,
+        path: shot.pathPoses,
         fovDeg: keyframe.fov,
         frameCount: Math.round(shot.durationSec * cfg.fps),
         width: Math.round(480 * (keyframe.aspect || 16 / 9)),

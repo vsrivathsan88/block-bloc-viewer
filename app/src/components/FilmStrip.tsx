@@ -33,7 +33,7 @@ function StripFrame({ project, shot, index, active, onOpen, onMove }: {
     >
       {img ? <img src={img} alt="" /> : <span className="blank" />}
       <span className="num">{index + 1}</span>
-      <span className="meta">{MOVEMENT_GLYPH[shot.movement]} {shot.durationSec}s</span>
+      <span className="meta">{shot.pathPoses ? "⤳" : MOVEMENT_GLYPH[shot.movement]} {shot.durationSec}s</span>
       {farm && <span className={`dot ${farm.status}`} title={`FARM ${farm.status}`} />}
     </div>
   );

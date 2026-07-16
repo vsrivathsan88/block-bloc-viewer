@@ -95,6 +95,21 @@ export const IconStage = () => (
 export const IconBox = () => (
   <svg {...S}><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" /><path d="M4 7.5l8 4.5 8-4.5" /><path d="M12 12v9" /></svg>
 );
+export const IconPath = () => (
+  // spline through waypoints
+  <svg {...S}>
+    <path d="M4 19c5 0 3-11 8-12 3.5-.7 5 3 8 2.5" />
+    <circle cx="4" cy="19" r="1.8" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="7" r="1.8" fill="currentColor" stroke="none" />
+    <circle cx="20" cy="9.5" r="1.8" fill="currentColor" stroke="none" />
+  </svg>
+);
+export const IconFilm = () => (
+  <svg {...S}>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M7 5v14M17 5v14M3 9.5h4M3 14.5h4M17 9.5h4M17 14.5h4" />
+  </svg>
+);
 export const IconShutter = () => (
   <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
     <circle cx="12" cy="12" r="9" />
