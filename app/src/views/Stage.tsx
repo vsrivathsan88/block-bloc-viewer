@@ -16,7 +16,8 @@ import { primeImageCache, useProject } from "../store/useProject";
 import PlanCanvas, { type BboxXZ, type PlannedCam, type ShotMark, yawOfQuat, yawQuat } from "../components/PlanCanvas";
 import TakeReview, { type Take } from "../components/TakeReview";
 import FilmStrip from "../components/FilmStrip";
-import { IconCameraRig, IconFilm, IconMap, IconPath, IconPlay, IconShutter } from "../components/icons";
+import { IconBolt, IconCameraRig, IconFilm, IconMap, IconPath, IconPlay, IconShutter } from "../components/icons";
+import { generateAll } from "../farm/generateShot";
 
 const FALLBACK_BBOX: BboxXZ = { min: [-4, -4], max: [4, 4] };
 
@@ -406,6 +407,16 @@ export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: str
         </button>
         <button className="shutter" title="shoot this frame (C)" onClick={shutter}>
           <IconShutter />
+        </button>
+        <button
+          className="ib bolt"
+          title="make everything move — FARM AR on every shot without footage"
+          onClick={async () => {
+            const [ok, failed] = await generateAll(project, dispatch);
+            if (failed) alert(`${ok} submitted, ${failed} failed`);
+          }}
+        >
+          <IconBolt />
         </button>
         <button className="ib" title="export flythrough (.webm)" onClick={exportFlythrough} disabled={!!exportNote}>
           <IconFilm />

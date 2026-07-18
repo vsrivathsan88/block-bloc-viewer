@@ -1,10 +1,18 @@
 // The storyboard as a film strip along the bottom of the stage. Shots
-// accumulate as you shoot; drag to re-cut; click to open a frame.
+// accumulate as you shoot; drag to re-cut; click to open a frame. A fresh
+// take plays right in its thumbnail — circle or toss it without opening
+// anything (dailies rhythm).
 
-import type { Project, Shot } from "../model/types";
-import { allShots, displayFrameId, frameById, takeStatus } from "../model/types";
+import type { Project, Shot, Take } from "../model/types";
+import { allShots, displayFrameId, frameById, reviewTake, takeStatus } from "../model/types";
 import { MOVEMENT_GLYPH } from "../lib/movement";
-import { useImage } from "../store/useProject";
+import { useImage, useProject } from "../store/useProject";
+import { IconCheck, IconClose } from "./icons";
+
+const DOT_TITLE: Record<string, string> = {
+  queued: "FARM queued", running: "FARM running", error: "FARM error",
+  review: "take ready — circle or toss it", done: "circled take",
+};
 
 function StripFrame({ project, shot, index, active, onOpen, onMove }: {
   project: Project;
@@ -14,13 +22,24 @@ function StripFrame({ project, shot, index, active, onOpen, onMove }: {
   onOpen: () => void;
   onMove: (fromShotId: string, toIndex: number) => void;
 }) {
+  const { dispatch } = useProject();
   const frame = frameById(project, displayFrameId(shot));
   const img = useImage(frame?.imageId);
   const dot = takeStatus(shot);
-  const DOT_TITLE: Record<string, string> = {
-    queued: "FARM queued", running: "FARM running", error: "FARM error",
-    review: "take ready — circle or toss it", done: "circled take",
-  };
+  const pending: Take | undefined = reviewTake(shot);
+  const pendingVid = useImage(pending?.videoId);
+  const pendingSrc = pending?.videoUrl ?? pendingVid;
+
+  const setTakes = (takes: Take[]) => dispatch({ type: "updateShot", shotId: shot.id, patch: { takes } });
+  const circle = () =>
+    pending &&
+    setTakes((shot.takes ?? []).map((t) =>
+      t.id === pending.id ? { ...t, circled: true, rejected: false } : { ...t, circled: false },
+    ));
+  const toss = () =>
+    pending &&
+    setTakes((shot.takes ?? []).map((t) => (t.id === pending.id ? { ...t, rejected: true, circled: false } : t)));
+
   return (
     <div
       className={`strip-frame ${active ? "on" : ""}`}
@@ -35,10 +54,23 @@ function StripFrame({ project, shot, index, active, onOpen, onMove }: {
       }}
       onClick={onOpen}
     >
-      {img ? <img src={img} alt="" /> : <span className="blank" />}
+      {pendingSrc ? (
+        <video src={pendingSrc} autoPlay muted loop />
+      ) : img ? (
+        <img src={img} alt="" />
+      ) : (
+        <span className="blank" />
+      )}
       <span className="num">{index + 1}</span>
       <span className="meta">{shot.pathPoses ? "⤳" : MOVEMENT_GLYPH[shot.movement]} {shot.durationSec}s</span>
-      {dot && <span className={`dot ${dot}`} title={DOT_TITLE[dot]} />}
+      {pendingSrc ? (
+        <span className="strip-verdict" onClick={(e) => e.stopPropagation()}>
+          <button className="sv good" title="circle this take" onClick={circle}><IconCheck /></button>
+          <button className="sv bad" title="toss this take" onClick={toss}><IconClose /></button>
+        </span>
+      ) : (
+        dot && <span className={`dot ${dot}`} title={DOT_TITLE[dot]} />
+      )}
     </div>
   );
 }

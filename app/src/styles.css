@@ -267,7 +267,19 @@ label.field {
 }
 .strip-frame:hover { transform: translateY(-4px); box-shadow: 0 0 0 2px #fff; }
 .strip-frame.dragover { box-shadow: 0 0 0 2px var(--accent); }
-.strip-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.strip-frame img, .strip-frame video { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* dailies triage: a fresh take plays in its thumbnail; circle/toss in place */
+.strip-verdict { position: absolute; top: 4px; right: 4px; display: flex; gap: 4px; }
+.sv {
+  width: 22px; height: 22px; border-radius: 50%; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; color: #fff; padding: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,.5);
+}
+.sv svg { width: 12px; height: 12px; }
+.sv.good { background: var(--success); }
+.sv.bad { background: rgba(20,20,28,.85); }
+.sv:hover { transform: scale(1.12); }
 .strip-frame .num {
   position: absolute; top: 4px; left: 6px;
   font-size: 10px; font-weight: 700; color: #fff;
@@ -347,11 +359,22 @@ label.field {
 .frame-tools .ib:hover, .frame-actions .ib:hover { background: rgba(255,255,255,.26); }
 .frame-tools .ib.on { background: #fff; color: var(--ink); }
 .frame-actions .ib.bolt { background: var(--accent); }
-.frame-actions .spacer { flex: 1; }
-.swatch { width: 20px; height: 20px; border-radius: 50%; cursor: pointer; box-shadow: 0 0 0 1px rgba(255,255,255,.4); flex: none; }
-.swatch.on { box-shadow: 0 0 0 2px #fff; }
+.frame-tools .spacer, .frame-actions .spacer { flex: 1; }
 
-.glyph-row { display: flex; gap: 3px; flex-wrap: wrap; }
+/* the move tag: shows the (drawn or inferred) camera move; click to override */
+.move-wrap { position: relative; }
+.frame-tools .move-tag {
+  border: none; cursor: pointer; font-size: 12px; color: #fff;
+  border-radius: var(--radius-pill); padding: 6px 12px;
+  background: rgba(255,255,255,.12);
+}
+.frame-tools .move-tag:hover { background: rgba(255,255,255,.26); }
+.move-pop {
+  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  display: flex; gap: 3px; flex-wrap: wrap; width: 246px; padding: 8px;
+  background: rgba(20,20,28,.95); border-radius: var(--radius-md);
+  box-shadow: 0 12px 32px rgba(0,0,0,.5); z-index: 5;
+}
 .glyph {
   width: 30px; height: 30px; padding: 0; border-radius: 8px;
   background: rgba(255,255,255,.1); color: rgba(255,255,255,.75);
@@ -474,6 +497,7 @@ label.field {
 .toolbar .ib { background: transparent; color: #fff; box-shadow: none; }
 .toolbar .ib:hover { background: rgba(255,255,255,.16); }
 .toolbar .ib.on { background: #fff; color: var(--ink); }
+.toolbar .ib.bolt { color: var(--warn); }
 .toolbar .shutter {
   position: static; transform: none;
   width: 52px; height: 52px; padding: 0; border-radius: 50%;

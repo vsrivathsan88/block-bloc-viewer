@@ -9,6 +9,7 @@ import { generateShot } from "../farm/generateShot";
 import { loadMarbleConfig } from "../marble/client";
 import { editImage, loadEditConfig } from "../edit/imageEdit";
 import { MOVEMENT_GLYPH, movementFamily } from "../lib/movement";
+import { movementFromArrow } from "../lib/sketch";
 import SketchCanvas from "./SketchCanvas";
 import { db } from "../store/db";
 import { getImageData, primeImageCache, useImage, useProject } from "../store/useProject";
@@ -17,7 +18,9 @@ import {
   IconPersonPlus, IconPlay, IconRevert, IconTrash, IconUndo,
 } from "./icons";
 
-const COLORS = ["#3d3a35", "#e5484d", "#3d648f"];
+// paper rules: red china marker for camera moves, graphite for everything else
+const ARROW_RED = "#e5484d";
+const PENCIL_GRAPHITE = "#3d3a35";
 
 function CastChip({ member, onClick, busy }: { member: CastMember; onClick: () => void; busy: boolean }) {
   const img = useImage(member.refImageIds[0]);
@@ -41,7 +44,7 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
   const shot = located?.shot;
 
   const [tool, setTool] = useState<"pencil" | "arrow">("arrow");
-  const [color, setColor] = useState(COLORS[1]);
+  const [movePop, setMovePop] = useState(false); // move-tag override popover
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const [showCastForm, setShowCastForm] = useState(false);
@@ -78,6 +81,13 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
 
   if (!shot) return null;
   const patch = (p: Partial<Shot>) => dispatch({ type: "updateShot", shotId: shot.id, patch: p });
+
+  // drawing an arrow IS picking the move
+  const onStrokes = (strokes: typeof shot.strokes) => {
+    const added = strokes.length > shot.strokes.length ? strokes[strokes.length - 1] : null;
+    const move = added?.tool === "arrow" ? movementFromArrow(added.points) : null;
+    patch(move ? { strokes, movement: move } : { strokes });
+  };
 
   // Circle a take (print it — the board and animatic play it); toss a take
   // (kept in history, dimmed). Only one circle per shot.
@@ -169,7 +179,12 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
           ) : (
             <>
               {img && <img src={img} alt="" />}
-              <SketchCanvas strokes={shot.strokes} tool={tool} color={color} onStrokes={(strokes) => patch({ strokes })} />
+              <SketchCanvas
+                strokes={shot.strokes}
+                tool={tool}
+                color={tool === "arrow" ? ARROW_RED : PENCIL_GRAPHITE}
+                onStrokes={onStrokes}
+              />
             </>
           )}
           {generating && <div className="gen-bar"><span /><em>{shot.farm?.phase || "…"}</em></div>}
@@ -199,11 +214,8 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
         )}
 
         <div className="frame-tools">
-          <button className={`ib ${tool === "pencil" ? "on" : ""}`} title="pencil" onClick={() => setTool("pencil")}><IconPencil /></button>
-          <button className={`ib ${tool === "arrow" ? "on" : ""}`} title="arrow — the camera move" onClick={() => setTool("arrow")}><IconArrow /></button>
-          {COLORS.map((c) => (
-            <span key={c} className={`swatch ${color === c ? "on" : ""}`} style={{ background: c }} onClick={() => setColor(c)} />
-          ))}
+          <button className={`ib ${tool === "arrow" ? "on" : ""}`} title="red arrow — draw the camera move, it sets itself" onClick={() => setTool("arrow")}><IconArrow /></button>
+          <button className={`ib ${tool === "pencil" ? "on" : ""}`} title="pencil — sketch" onClick={() => setTool("pencil")}><IconPencil /></button>
           <button className="ib" title="undo stroke" disabled={!shot.strokes.length}
             onClick={() => patch({ strokes: shot.strokes.slice(0, -1) })}><IconUndo /></button>
           <button className="ib" title="preview the move in the world" disabled={!keyframe} onClick={previewMove}>
@@ -212,20 +224,31 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
 
           <span className="sep" />
 
-          <div className="glyph-row" title="camera move">
-            {MOVEMENTS.map((m) => (
-              <button
-                key={m}
-                className={`glyph ${movementFamily(m)} ${shot.movement === m ? "on" : ""}`}
-                title={m}
-                onClick={() => patch({ movement: m })}
-              >
-                {MOVEMENT_GLYPH[m]}
-              </button>
-            ))}
+          <div className="move-wrap">
+            <button
+              className={`move-tag ${movementFamily(shot.movement)}`}
+              title="the camera move — drawn arrows set it; click to override"
+              onClick={() => setMovePop(!movePop)}
+            >
+              {MOVEMENT_GLYPH[shot.movement]} {shot.movement}
+            </button>
+            {movePop && (
+              <div className="move-pop" onMouseLeave={() => setMovePop(false)}>
+                {MOVEMENTS.map((m) => (
+                  <button
+                    key={m}
+                    className={`glyph ${movementFamily(m)} ${shot.movement === m ? "on" : ""}`}
+                    title={m}
+                    onClick={() => { patch({ movement: m }); setMovePop(false); }}
+                  >
+                    {MOVEMENT_GLYPH[m]}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          <span className="sep" />
+          <span className="spacer" />
 
           <div className="dur" title="duration">
             <button className="ib" onClick={() => patch({ durationSec: Math.max(0.5, shot.durationSec - 0.5) })}>−</button>

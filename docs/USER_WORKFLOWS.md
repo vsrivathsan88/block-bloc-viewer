@@ -63,19 +63,25 @@ First world load auto-banks a yaw-ring of anchors (built — silent, ~4 s).
 
 ## W3 · Direct each shot
 
-**Steps:** tap a strip frame → one overlay: draw the move (grease pencil),
-pick a move glyph, one action line, duration stepper. Drop a **cast chip**
+**Steps:** tap a strip frame → one overlay: **draw the red arrow and the
+camera move sets itself** (right = pan right, into center = push-in, up =
+tilt-up; the move tag shows the result and overrides on click — no glyph
+picking). Pencil sketches in graphite; colors are fixed like paper: red
+china marker for moves, graphite for drawing. One action line, duration
+stepper. Drop a **cast chip**
 (character or prop) onto the plate — NB/gpt-image-1 composites it,
 pose-preserving, so the plate stays a valid anchor. Hit **⚡**:
 auto-context (nearest anchors, keyframe last, 32-frame budget), prompt =
 set description + movement grammar + action (action only when a cast plate
 exists — built), Operation polls in the background; strip dot
-tracks queued → running → **review**. Footage lands as a **take** —
-circle it (✓, it prints: board + animatic play it) or toss it (kept in
-history, dimmed). Retakes (⚡, seed-bumped) stack as T1/T2/T3 chips under
-the frame; any take can be re-viewed and re-circled; "still" returns to
-the drawable frame. Mock mode renders real ken-burns webm takes so the
-loop works without a servable.
+tracks queued → running → **review**. Footage lands as a **take** and
+**plays right in its strip thumbnail with ✓/✗ on it** — circle or toss
+without opening anything (dailies rhythm). The overlay has the same
+verdict plus history: retakes (⚡, seed-bumped) stack as T1/T2/T3 chips,
+any take re-viewable and re-circlable; "still" returns to the drawable
+frame. The toolbar ⚡ generates every shot without footage in one press
+(shoot everything → draw arrows → one bolt → triage the dots). Mock mode
+renders real ken-burns webm takes so the loop works without a servable.
 **APIs:** `tasks:farmAr` (spec: `docs/farm_ar_api_spec.md`); 3P image edit.
 **Failure states:** FARM error → red dot + error on the frame, retry = ⚡
 again; mock mode → labeled simulated.
