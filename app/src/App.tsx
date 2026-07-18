@@ -10,10 +10,8 @@ import PlayerOverlay from "./components/PlayerOverlay";
 import WorldImport from "./components/WorldImport";
 import SettingsModal from "./views/SettingsModal";
 import ShotListView from "./views/ShotListView";
+import { DEMO_SPZ } from "./lib/demoViewer";
 import { IconBoard, IconClose, IconDots, IconGear, IconGlobe, IconStage } from "./components/icons";
-
-// The living-room demo world the viewer defaults to.
-const DEMO_SPZ = "https://cdn.marble.worldlabs.ai/bd1c3e7a-e412-4950-bb82-045f95f047a5/0dea05c6-6b15-4d51-bc0d-5f46b5e3df5a_ceramic_500k.spz";
 
 // Boot must run once per page, not once per mount — StrictMode double-mounts
 // would otherwise race two loadLastProject() calls and create two projects.
@@ -106,8 +104,8 @@ export default function App() {
 
       {/* view switcher — Figma-style, top center */}
       <div className={`view-switch ${view === "board" ? "light" : ""}`}>
-        <button className={view === "stage" ? "on" : ""} title="stage — the world" onClick={() => setView("stage")}><IconStage /></button>
-        <button className={view === "board" ? "on" : ""} title="storyboard — frames with captions" onClick={() => setView("board")}><IconBoard /></button>
+        <button className={view === "stage" ? "on" : ""} title="the world — walk and shoot" onClick={() => setView("stage")}><IconStage /><span className="lbl">stage</span></button>
+        <button className={view === "board" ? "on" : ""} title="the storyboard — frames with captions" onClick={() => setView("board")}><IconBoard /><span className="lbl">board</span></button>
       </div>
 
       <Stage onOpenShot={setOpenShotId} onPlay={() => setPlaying(true)} />

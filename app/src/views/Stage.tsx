@@ -8,7 +8,7 @@ import { inferAngle, inferLensMm } from "../lib/inference";
 import {
   captureFrame, getViewer, getWorldBboxXZ, onViewerKey, setViewerPose, VIEWER_PATH,
 } from "../lib/viewerBridge";
-import { DEMO_MODE, DEMO_VIEWER_HTML } from "../lib/demoViewer";
+import { DEMO_MODE, DEMO_SPZ, DEMO_VIEWER_HTML } from "../lib/demoViewer";
 import { impliedEndPose } from "../lib/movement";
 import { pathPoseAt, shouldKeepWaypoint } from "../lib/path";
 import { db } from "../store/db";
@@ -393,36 +393,43 @@ export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: str
         )}
       </div>
 
-      {/* Figma-style floating toolbar: map · path · shutter · export · play */}
+      {/* the imported world can't stream inside a hosted preview — say so */}
+      {DEMO_MODE && project.world.spzUrl !== DEMO_SPZ && (
+        <div className="demo-note">
+          this preview renders the demo set — run the app locally (README) to shoot in “{project.world.title}”
+        </div>
+      )}
+
+      {/* Figma-style floating toolbar — icons carry small labels */}
       <div className="toolbar">
-        <button className={`ib ${mapOpen ? "on" : ""}`} title="camera plan" onClick={() => { setMapOpen(!mapOpen); if (mapOpen) setPlanned([]); }}>
-          <IconMap />
+        <button className={`ib ${mapOpen ? "on" : ""}`} title="floor plan — place cameras on the map" onClick={() => { setMapOpen(!mapOpen); if (mapOpen) setPlanned([]); }}>
+          <IconMap /><span className="lbl">plan</span>
         </button>
         <button
           className={`ib ${recordingPath ? "rec" : ""}`}
-          title={recordingPath ? "stop — path becomes the shot" : "record a camera path: press, walk the move, press again"}
+          title={recordingPath ? "stop — the walk becomes the shot" : "record a camera path: press, walk the move, press again"}
           onClick={togglePathRecord}
         >
-          <IconPath />
+          <IconPath /><span className="lbl">{recordingPath ? "stop" : "path"}</span>
         </button>
         <button className="shutter" title="shoot this frame (C)" onClick={shutter}>
           <IconShutter />
         </button>
         <button
           className="ib bolt"
-          title="make everything move — FARM AR on every shot without footage"
+          title="FARM AR on every shot that has no footage yet"
           onClick={async () => {
             const [ok, failed] = await generateAll(project, dispatch);
             if (failed) alert(`${ok} submitted, ${failed} failed`);
           }}
         >
-          <IconBolt />
+          <IconBolt /><span className="lbl">generate</span>
         </button>
-        <button className="ib" title="export flythrough (.webm)" onClick={exportFlythrough} disabled={!!exportNote}>
-          <IconFilm />
+        <button className="ib" title="export the whole board as one flythrough (.webm)" onClick={exportFlythrough} disabled={!!exportNote}>
+          <IconFilm /><span className="lbl">export</span>
         </button>
-        <button className="ib" title="play the board" onClick={onPlay}>
-          <IconPlay />
+        <button className="ib" title="play the cut" onClick={onPlay}>
+          <IconPlay /><span className="lbl">play</span>
         </button>
       </div>
 

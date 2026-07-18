@@ -91,11 +91,21 @@ Cameras are raw Three.js camera-to-world state (pinhole intrinsics fx/fy/cx/cy +
 
 Projects persist in IndexedDB and round-trip through a self-contained JSON export (`schemas/storyboard.schema.json`).
 
+### Run it with real Marble worlds
+
 ```bash
 cd app && npm install
 npm run dev     # app on :5173, viewer served same-origin at /viewer.html
 npm run build   # typecheck + build into ../storyboard (commit the output)
 ```
+
+Then click the **world chip** (topbar, next to the title) and paste a Marble
+share URL, world id, or direct `.spz` URL. A `.spz` URL renders immediately;
+ids resolve via a Developer API key (⚙ settings). The hosted Claude preview
+runs `VITE_DEMO=1` inside a sandbox that cannot reach the Marble CDN, so it
+always renders the built-in blockout set — a banner says so whenever a real
+world is selected there. Real worlds need the app running with network
+access (locally, or any static host serving this repo).
 
 ## TODO
 

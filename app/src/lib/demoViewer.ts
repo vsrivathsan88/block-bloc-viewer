@@ -7,6 +7,9 @@
 
 export const DEMO_MODE = !!import.meta.env.VITE_DEMO;
 
+/** The living-room demo world new projects start in. */
+export const DEMO_SPZ = "https://cdn.marble.worldlabs.ai/bd1c3e7a-e412-4950-bb82-045f95f047a5/0dea05c6-6b15-4d51-bc0d-5f46b5e3df5a_ceramic_500k.spz";
+
 export const DEMO_VIEWER_HTML = `<!doctype html>
 <html><head><meta charset="utf-8"><style>
 html,body{margin:0;height:100%;overflow:hidden;background:#101018}

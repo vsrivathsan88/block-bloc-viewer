@@ -143,8 +143,9 @@ export default function WorldImport({ onClose, firstRun }: { onClose: () => void
         )}
         {DEMO_MODE && (
           <div className="hint">
-            this hosted preview always renders the built-in demo set — imports
-            apply when the app runs with real CDN access
+            heads-up: this hosted preview can't stream Marble worlds (sandboxed) —
+            your pick is saved, but the demo set renders. Run the app locally
+            (README → “Run it with real Marble worlds”) to shoot in it.
           </div>
         )}
         <div className="hint">

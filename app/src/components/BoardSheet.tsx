@@ -32,7 +32,7 @@ function BoardCard({ project, shot, index, onOpen, onMove }: {
       }}
     >
       <div className="bc-img" onClick={onOpen}>
-        {img && <img src={img} alt="" />}
+        {img && <img src={img} alt="" draggable={false} />}
         {shot.strokes.length > 0 && <StrokesSvg strokes={shot.strokes} />}
         {takeStatus(shot) && <span className={`dot ${takeStatus(shot)}`} />}
       </div>

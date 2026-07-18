@@ -266,8 +266,25 @@ label.field {
   background: #1c1a26;
 }
 .strip-frame:hover { transform: translateY(-4px); box-shadow: 0 0 0 2px #fff; }
-.strip-frame.dragover { box-shadow: 0 0 0 2px var(--accent); }
-.strip-frame img, .strip-frame video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.strip-frame { cursor: grab; }
+.strip-frame.lift { opacity: .55; transform: scale(.94); cursor: grabbing; }
+.strip-frame.dragover { box-shadow: 0 0 0 3px var(--accent); }
+.strip-frame img, .strip-frame video {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  pointer-events: none; user-select: none; /* frames drag as one unit */
+}
+.strip { touch-action: pan-x; }
+
+/* hover ✕ — delete without opening anything */
+.sf-del {
+  position: absolute; bottom: 4px; right: 4px;
+  width: 20px; height: 20px; border-radius: 50%; border: none; cursor: pointer;
+  display: none; align-items: center; justify-content: center; padding: 0;
+  background: rgba(20,20,28,.85); color: #fff;
+}
+.sf-del svg { width: 11px; height: 11px; }
+.strip-frame:hover .sf-del { display: flex; }
+.sf-del:hover { background: var(--danger); }
 
 /* dailies triage: a fresh take plays in its thumbnail; circle/toss in place */
 .strip-verdict { position: absolute; top: 4px; right: 4px; display: flex; gap: 4px; }
@@ -494,10 +511,26 @@ label.field {
   background: rgba(15,14,22,.72); backdrop-filter: blur(10px);
   box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 8px 28px rgba(0,0,0,.45);
 }
-.toolbar .ib { background: transparent; color: #fff; box-shadow: none; }
+.toolbar .ib {
+  background: transparent; color: #fff; box-shadow: none;
+  width: auto; height: auto; min-width: 46px; padding: 5px 8px;
+  display: inline-flex; flex-direction: column; align-items: center; gap: 2px;
+  border-radius: var(--radius-md);
+}
+.toolbar .lbl { font-size: 9px; letter-spacing: .3px; opacity: .75; }
+.toolbar .ib.on .lbl, .toolbar .ib:hover .lbl { opacity: 1; }
 .toolbar .ib:hover { background: rgba(255,255,255,.16); }
 .toolbar .ib.on { background: #fff; color: var(--ink); }
 .toolbar .ib.bolt { color: var(--warn); }
+
+/* honest banner: imported worlds can't stream in a hosted preview */
+.demo-note {
+  position: absolute; top: 54px; left: 50%; transform: translateX(-50%);
+  z-index: 12; max-width: min(560px, 90vw); text-align: center;
+  padding: 6px 14px; border-radius: var(--radius-pill);
+  background: rgba(15,14,22,.78); color: var(--warn); font-size: 11.5px;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.14);
+}
 .toolbar .shutter {
   position: static; transform: none;
   width: 52px; height: 52px; padding: 0; border-radius: 50%;
@@ -519,10 +552,11 @@ label.field {
   box-shadow: 0 0 0 1px rgba(255,255,255,.14);
 }
 .view-switch button {
-  width: 40px; height: 32px; padding: 0; border-radius: var(--radius-pill);
+  height: 32px; padding: 0 12px; border-radius: var(--radius-pill);
   background: transparent; color: rgba(255,255,255,.75);
-  display: inline-flex; align-items: center; justify-content: center;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
 }
+.view-switch .lbl { font-size: 11px; font-weight: 600; }
 .view-switch button:hover { background: rgba(255,255,255,.14); color: #fff; }
 .view-switch button.on { background: #fff; color: var(--ink); }
 .view-switch.light { background: var(--panel-bg); box-shadow: var(--elev-ring); }
