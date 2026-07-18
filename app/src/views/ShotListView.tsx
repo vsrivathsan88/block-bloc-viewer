@@ -1,7 +1,7 @@
 // The shooting plan: every shot numbered and specified. Print it.
 
 import type { Project } from "../model/types";
-import { fmtRuntime, frameById, totalRuntime } from "../model/types";
+import { circledTake, fmtRuntime, frameById, reviewTake, shotTakes, totalRuntime } from "../model/types";
 import { useImage, useProject } from "../store/useProject";
 
 function Thumb({ project, frameId }: { project: Project; frameId?: string }) {
@@ -48,7 +48,15 @@ export default function ShotListView({ onOpenShot }: { onOpenShot: (shotId: stri
                     {shot.dialogue && <div style={{ fontStyle: "italic" }}>“{shot.dialogue}”</div>}
                   </td>
                   <td>{shot.notes}</td>
-                  <td>{shot.farm ? (shot.farm.videoUrl ? "✓" : shot.farm.status) : "—"}</td>
+                  <td>
+                    {circledTake(shot)
+                      ? `◉ T${shotTakes(shot).findIndex((t) => t.circled) + 1}`
+                      : reviewTake(shot)
+                        ? "review"
+                        : shot.farm
+                          ? shot.farm.status
+                          : "—"}
+                  </td>
                 </tr>
               )),
             ]

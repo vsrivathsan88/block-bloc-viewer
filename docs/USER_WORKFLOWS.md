@@ -33,9 +33,12 @@ registry unreachable → model fields stay free-text.
 
 ## W1 · Pick a world
 
-**Steps:** open app → world picker: thumbnail grid of the account's worlds
-(`POST /marble/v1/worlds:list`), search by name/tag; or paste a world ID/URL.
-Selecting resolves everything from the world object — no URL pasting:
+**Steps (built):** open app → **world import** (first run auto-opens; the
+world chip in the topbar reopens it any time): one field takes a share URL,
+world id, or direct `.spz` URL → "shoot here". With a Developer API key,
+"browse my worlds…" shows the thumbnail grid (`POST /marble/v1/worlds:list`).
+A `.spz` URL needs no key at all. Resolving an id pulls everything from the
+world object:
 - splat: chosen from `assets.splats.spz_urls` (LOD policy: light tier for
   scouting; tier switchable in settings)
 - collider: `assets.mesh.collider_mesh_url` → walk collision + floor-follow
@@ -67,7 +70,12 @@ pose-preserving, so the plate stays a valid anchor. Hit **⚡**:
 auto-context (nearest anchors, keyframe last, 32-frame budget), prompt =
 set description + movement grammar + action (action only when a cast plate
 exists — built), Operation polls in the background; strip dot
-tracks queued → running → done; MP4 replaces the pencil-test.
+tracks queued → running → **review**. Footage lands as a **take** —
+circle it (✓, it prints: board + animatic play it) or toss it (kept in
+history, dimmed). Retakes (⚡, seed-bumped) stack as T1/T2/T3 chips under
+the frame; any take can be re-viewed and re-circled; "still" returns to
+the drawable frame. Mock mode renders real ken-burns webm takes so the
+loop works without a servable.
 **APIs:** `tasks:farmAr` (spec: `docs/farm_ar_api_spec.md`); 3P image edit.
 **Failure states:** FARM error → red dot + error on the frame, retry = ⚡
 again; mock mode → labeled simulated.
@@ -97,8 +105,9 @@ camera move in board order. **Open for v1.x:** post board/clips to Slack.
 ## Act III power loop (carried from v1 map — top build priority after worlds)
 
 **Built:** "⚡ generate all" (menu) + seed-bumped retakes (every ⚡ press uses
-a fresh seed). **Open:** A/R triage BETWEEN generations (versions kept, pick
-the best) — the last piece of "FARM as coverage".
+a fresh seed) + circle/toss triage BETWEEN generations — takes accumulate
+per shot, one gets circled, the rest stay in history. "FARM as coverage"
+is closed.
 
 ## Non-goals for v1 (explicit)
 
@@ -111,7 +120,9 @@ the best) — the last piece of "FARM as coverage".
 ## Open questions (next grill)
 
 1. LOD policy — silent auto (light scout / full capture) or a visible toggle?
-2. When FARM footage lands, does it *replace* the panel automatically or go
-   through an accept step (take-review consistency says accept)?
+   (Today: tier picked at import, switchable in ⚙ settings.)
+2. ~~Replace vs accept when FARM footage lands~~ — resolved: footage lands
+   as a take awaiting a circle/toss verdict; an unjudged take previews in
+   the animatic until judged.
 3. Animatic export target — MP4 file, or straight to Slack (#demo-spam)?
 4. v2 multi-world shape — per-scene binding vs freely-mixable sets.

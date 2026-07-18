@@ -2,8 +2,8 @@
 // drop a character in, make it move. Icons + tooltips; no labels.
 
 import { useEffect, useState } from "react";
-import type { CapturedFrame, CastMember, Shot } from "../model/types";
-import { frameById, MOVEMENTS, uid } from "../model/types";
+import type { CapturedFrame, CastMember, Shot, Take } from "../model/types";
+import { circledTake, frameById, MOVEMENTS, reviewTake, shotTakes, uid } from "../model/types";
 import { loadFarmConfig } from "../farm/client";
 import { generateShot } from "../farm/generateShot";
 import { loadMarbleConfig } from "../marble/client";
@@ -56,6 +56,20 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
   // generation polling is app-level (store/farmWatcher) — closing this
   // overlay never stops a task
 
+  // takes: which one the stage shows. "still" = back to the drawable frame.
+  const [viewTakeId, setViewTakeId] = useState<string | null>(null);
+  const takes = shot ? shotTakes(shot) : [];
+  const shownTake: Take | undefined =
+    viewTakeId === "still"
+      ? undefined
+      : takes.find((t) => t.id === viewTakeId) ??
+        (shot ? reviewTake(shot) ?? circledTake(shot) : undefined);
+  const takeVid = useImage(shownTake?.videoId);
+  const videoSrc = shownTake?.videoUrl ?? takeVid;
+  // fresh footage presents itself: when a take lands, drop any pinned view
+  // so the default (the take awaiting verdict) shows
+  useEffect(() => { setViewTakeId(null); }, [takes.length, shotId]);
+
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", h);
@@ -64,6 +78,17 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
 
   if (!shot) return null;
   const patch = (p: Partial<Shot>) => dispatch({ type: "updateShot", shotId: shot.id, patch: p });
+
+  // Circle a take (print it — the board and animatic play it); toss a take
+  // (kept in history, dimmed). Only one circle per shot.
+  const circle = (id: string) => {
+    patch({ takes: takes.map((t) => ({ ...t, circled: t.id === id, rejected: t.id === id ? false : t.rejected })) });
+    setViewTakeId(id);
+  };
+  const toss = (id: string) => {
+    patch({ takes: takes.map((t) => (t.id === id ? { ...t, rejected: true, circled: false } : t)) });
+    setViewTakeId(null);
+  };
 
   async function compositeCast(member: CastMember) {
     if (!shot || !cleanFrame) return;
@@ -131,8 +156,16 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
     <div className="frame-overlay" onClick={onClose}>
       <div className="frame-card" onClick={(e) => e.stopPropagation()}>
         <div className="frame-stage">
-          {shot.farm?.videoUrl ? (
-            <video src={shot.farm.videoUrl} controls autoPlay loop />
+          {videoSrc ? (
+            <>
+              <video key={shownTake?.id} src={videoSrc} controls autoPlay loop muted />
+              {shownTake && !shownTake.circled && (
+                <div className="verdict">
+                  <button className="vb good" title="circle this take — it prints" onClick={() => circle(shownTake.id)}><IconCheck /></button>
+                  <button className="vb bad" title="toss this take" onClick={() => toss(shownTake.id)}><IconClose /></button>
+                </div>
+              )}
+            </>
           ) : (
             <>
               {img && <img src={img} alt="" />}
@@ -142,6 +175,28 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
           {generating && <div className="gen-bar"><span /><em>{shot.farm?.phase || "…"}</em></div>}
           {shot.farm?.status === "error" && <div className="gen-err" title={shot.farm.error}>!</div>}
         </div>
+
+        {takes.length > 0 && (
+          <div className="take-row">
+            <button
+              className={`take-chip ${!shownTake ? "on" : ""}`}
+              title="the still frame — sketch on it"
+              onClick={() => setViewTakeId("still")}
+            >
+              still
+            </button>
+            {takes.map((t, i) => (
+              <button
+                key={t.id}
+                className={`take-chip ${shownTake?.id === t.id ? "on" : ""} ${t.circled ? "circled" : ""} ${t.rejected ? "tossed" : ""}`}
+                title={t.circled ? `take ${i + 1} — circled` : t.rejected ? `take ${i + 1} — tossed` : `take ${i + 1} — awaiting verdict`}
+                onClick={() => setViewTakeId(t.id)}
+              >
+                {t.circled ? "◉ " : ""}T{i + 1}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="frame-tools">
           <button className={`ib ${tool === "pencil" ? "on" : ""}`} title="pencil" onClick={() => setTool("pencil")}><IconPencil /></button>

@@ -284,6 +284,7 @@ label.field {
   background: rgba(255,255,255,.5);
 }
 .strip-frame .dot.queued, .strip-frame .dot.running { background: var(--warn); animation: pulse 1.2s infinite; }
+.strip-frame .dot.review { background: var(--warn); box-shadow: 0 0 0 2px rgba(255,255,255,.5); }
 .strip-frame .dot.done { background: var(--success); }
 .strip-frame .dot.error { background: var(--danger); }
 @keyframes pulse { 50% { opacity: .35; } }
@@ -314,6 +315,31 @@ label.field {
 @keyframes slide { to { background-position: -200% 0; } }
 .gen-bar.inline { position: static; border-radius: var(--r); }
 .gen-err { position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; border-radius: 50%; background: var(--danger); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+
+/* take verdict — circle it or toss it, right on the footage */
+.verdict {
+  position: absolute; right: 10px; bottom: 34px;
+  display: flex; gap: 8px;
+}
+.vb {
+  width: 40px; height: 40px; border-radius: 50%; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; color: #fff;
+  box-shadow: 0 6px 18px rgba(0,0,0,.45);
+}
+.vb.good { background: var(--success); }
+.vb.bad { background: rgba(20,20,28,.8); }
+.vb:hover { transform: scale(1.08); }
+
+/* take history chips */
+.take-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.take-chip {
+  border: none; cursor: pointer; border-radius: 999px; padding: 3px 10px;
+  font-size: 11px; background: rgba(255,255,255,.12); color: #fff;
+}
+.take-chip:hover { background: rgba(255,255,255,.26); }
+.take-chip.on { background: #fff; color: var(--ink); }
+.take-chip.circled { box-shadow: 0 0 0 1.5px var(--success); }
+.take-chip.tossed { opacity: .45; text-decoration: line-through; }
 
 .frame-tools, .frame-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .frame-tools .sep { width: 1px; height: 22px; background: rgba(255,255,255,.2); margin: 0 4px; }
@@ -516,6 +542,7 @@ label.field {
 .board-card .bc-img svg.strokes { position: absolute; inset: 0; width: 100%; height: 100%; }
 .board-card .bc-img .dot { position: absolute; top: 8px; right: 8px; width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,.6); }
 .board-card .bc-img .dot.queued, .board-card .bc-img .dot.running { background: var(--warn); animation: pulse 1.2s infinite; }
+.board-card .bc-img .dot.review { background: var(--warn); box-shadow: 0 0 0 2px #fff; }
 .board-card .bc-img .dot.done { background: var(--success); }
 .board-card .bc-img .dot.error { background: var(--danger); }
 .board-card .bc-slate { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-soft); }

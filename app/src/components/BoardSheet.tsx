@@ -3,7 +3,7 @@
 // drag to re-cut; click a frame to open it.
 
 import type { Project, Shot } from "../model/types";
-import { allShots, displayFrameId, fmtRuntime, frameById, totalRuntime } from "../model/types";
+import { allShots, displayFrameId, fmtRuntime, frameById, takeStatus, totalRuntime } from "../model/types";
 import { MOVEMENT_GLYPH, movementFamily } from "../lib/movement";
 import { useImage, useProject } from "../store/useProject";
 import StrokesSvg from "./StrokesSvg";
@@ -34,7 +34,7 @@ function BoardCard({ project, shot, index, onOpen, onMove }: {
       <div className="bc-img" onClick={onOpen}>
         {img && <img src={img} alt="" />}
         {shot.strokes.length > 0 && <StrokesSvg strokes={shot.strokes} />}
-        {shot.farm && <span className={`dot ${shot.farm.status}`} />}
+        {takeStatus(shot) && <span className={`dot ${takeStatus(shot)}`} />}
       </div>
       <div className="bc-slate">
         <b>{index + 1}</b>

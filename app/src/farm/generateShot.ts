@@ -4,7 +4,7 @@
 // the servable is deterministic per the spec).
 
 import type { Project, Shot } from "../model/types";
-import { frameById } from "../model/types";
+import { frameById, shotTakes } from "../model/types";
 import type { Action } from "../store/useProject";
 import { getImageData } from "../store/useProject";
 import { autoContextIds } from "../lib/inference";
@@ -81,7 +81,7 @@ export async function generateAll(
       if (!shot.frameId) continue;
       const st = shot.farm?.status;
       if (st === "queued" || st === "running") continue;
-      if (shot.farm?.videoUrl) continue;
+      if (shotTakes(shot).some((t) => !t.rejected)) continue; // has footage
       try {
         await generateShot(project, shot, dispatch);
         ok++;

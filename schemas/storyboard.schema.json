@@ -412,6 +412,24 @@
             "$ref": "#/$defs/pose"
           },
           "description": "recorded camera path waypoints; overrides movement/endPose \u2014 targets sample the arc-length spline through these"
+        },
+        "takes": {
+          "type": "array",
+          "description": "every completed generation, oldest first; the circled take is the keeper the board and animatic play",
+          "items": {
+            "type": "object",
+            "required": ["id", "prompt", "seedOffset", "generatedAt"],
+            "properties": {
+              "id": { "type": "string" },
+              "videoUrl": { "type": "string", "description": "remote MP4 (live FARM)" },
+              "videoId": { "type": "string", "description": "images-store key for locally rendered footage (mock mode)" },
+              "prompt": { "type": "string" },
+              "seedOffset": { "type": "integer" },
+              "generatedAt": { "type": "number" },
+              "circled": { "type": "boolean" },
+              "rejected": { "type": "boolean" }
+            }
+          }
         }
       }
     }

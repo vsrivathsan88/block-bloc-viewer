@@ -88,6 +88,22 @@ export interface FarmGeneration {
   mock?: boolean;
 }
 
+/** One completed FARM generation for a shot. Takes accumulate — nothing is
+ * thrown away on a retake. Circling a take (film-set language: the keeper
+ * the editor prints) is what puts it on the board and in the animatic. */
+export interface Take {
+  id: string;
+  /** remote MP4 (live FARM) */
+  videoUrl?: string;
+  /** images-store key for locally rendered footage (mock mode) */
+  videoId?: string;
+  prompt: string;
+  seedOffset: number;
+  generatedAt: number;
+  circled?: boolean;
+  rejected?: boolean;
+}
+
 export interface Shot {
   id: string;
   /** e.g. "3" or "3A" — combined with the scene number for the slate */
@@ -117,6 +133,8 @@ export interface Shot {
   notes: string;
   strokes: Stroke[];
   farm?: FarmGeneration;
+  /** every completed generation, oldest first */
+  takes?: Take[];
 }
 
 export interface SceneGroup {
@@ -209,9 +227,59 @@ export function displayFrameId(shot: Shot): string | undefined {
   return shot.castFrameId ?? shot.frameId;
 }
 
-/** Fill fields added after a project was saved (pre-cast exports, etc.). */
+export function shotTakes(s: Shot): Take[] {
+  return s.takes ?? [];
+}
+
+/** The circled (kept) take — what the board and animatic play. */
+export function circledTake(s: Shot): Take | undefined {
+  return shotTakes(s).find((t) => t.circled);
+}
+
+/** The freshest unjudged take, waiting for a circle-or-toss verdict. */
+export function reviewTake(s: Shot): Take | undefined {
+  const pending = shotTakes(s).filter((t) => !t.circled && !t.rejected);
+  return pending[pending.length - 1];
+}
+
+/** One word for where a shot's footage stands — drives every status dot. */
+export function takeStatus(
+  s: Shot,
+): "queued" | "running" | "error" | "review" | "done" | undefined {
+  const st = s.farm?.status;
+  if (st === "queued" || st === "running" || st === "error") return st;
+  if (reviewTake(s)) return "review";
+  if (circledTake(s)) return "done";
+  return undefined;
+}
+
+/** Fill fields added after a project was saved (pre-cast exports, etc.).
+ * Legacy footage (farm.videoUrl, before takes existed) becomes take 1,
+ * circled — it was already the shot's footage. */
 export function normalizeProject(p: Project): Project {
-  return { ...p, frames: p.frames ?? [], cast: p.cast ?? [] };
+  return {
+    ...p,
+    frames: p.frames ?? [],
+    cast: p.cast ?? [],
+    scenes: p.scenes.map((sc) => ({
+      ...sc,
+      shots: sc.shots.map((s) =>
+        s.takes || !s.farm?.videoUrl
+          ? s
+          : {
+              ...s,
+              takes: [{
+                id: uid(),
+                videoUrl: s.farm.videoUrl,
+                prompt: s.farm.prompt,
+                seedOffset: s.farm.seedOffset ?? 0,
+                generatedAt: s.farm.submittedAt,
+                circled: true,
+              }],
+            },
+      ),
+    })),
+  };
 }
 
 export function allShots(p: Project): { scene: SceneGroup; shot: Shot }[] {

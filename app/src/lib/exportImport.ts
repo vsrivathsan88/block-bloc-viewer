@@ -17,6 +17,10 @@ export async function exportProject(project: Project): Promise<void> {
   const imageIds = [
     ...project.frames.map((f) => f.imageId),
     ...(project.cast ?? []).flatMap((c) => c.refImageIds),
+    // locally rendered take footage (mock mode) also lives in the images store
+    ...project.scenes.flatMap((sc) =>
+      sc.shots.flatMap((s) => (s.takes ?? []).flatMap((t) => (t.videoId ? [t.videoId] : []))),
+    ),
   ];
   for (const id of imageIds) {
     const url = await db.getImage(id);

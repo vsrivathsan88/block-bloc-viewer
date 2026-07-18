@@ -2,7 +2,7 @@
 // accumulate as you shoot; drag to re-cut; click to open a frame.
 
 import type { Project, Shot } from "../model/types";
-import { allShots, displayFrameId, frameById } from "../model/types";
+import { allShots, displayFrameId, frameById, takeStatus } from "../model/types";
 import { MOVEMENT_GLYPH } from "../lib/movement";
 import { useImage } from "../store/useProject";
 
@@ -16,7 +16,11 @@ function StripFrame({ project, shot, index, active, onOpen, onMove }: {
 }) {
   const frame = frameById(project, displayFrameId(shot));
   const img = useImage(frame?.imageId);
-  const farm = shot.farm;
+  const dot = takeStatus(shot);
+  const DOT_TITLE: Record<string, string> = {
+    queued: "FARM queued", running: "FARM running", error: "FARM error",
+    review: "take ready — circle or toss it", done: "circled take",
+  };
   return (
     <div
       className={`strip-frame ${active ? "on" : ""}`}
@@ -34,7 +38,7 @@ function StripFrame({ project, shot, index, active, onOpen, onMove }: {
       {img ? <img src={img} alt="" /> : <span className="blank" />}
       <span className="num">{index + 1}</span>
       <span className="meta">{shot.pathPoses ? "⤳" : MOVEMENT_GLYPH[shot.movement]} {shot.durationSec}s</span>
-      {farm && <span className={`dot ${farm.status}`} title={`FARM ${farm.status}`} />}
+      {dot && <span className={`dot ${dot}`} title={DOT_TITLE[dot]} />}
     </div>
   );
 }

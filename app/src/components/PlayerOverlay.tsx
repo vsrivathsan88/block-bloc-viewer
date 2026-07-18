@@ -2,7 +2,7 @@
 // Ken Burns pencil-test elsewhere. Icons only.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { allShots, displayFrameId, fmtRuntime, frameById, totalRuntime } from "../model/types";
+import { allShots, circledTake, displayFrameId, fmtRuntime, frameById, reviewTake, totalRuntime } from "../model/types";
 import { kenBurns } from "../lib/movement";
 import { useImage, useProject } from "../store/useProject";
 import StrokesSvg from "./StrokesSvg";
@@ -36,7 +36,10 @@ export default function PlayerOverlay({ onClose }: { onClose: () => void }) {
   const current = shots[idx];
   const frame = current ? frameById(project, displayFrameId(current.shot)) : undefined;
   const img = useImage(frame?.imageId);
-  const video = current?.shot.farm?.videoUrl;
+  // the circled take plays; an unjudged fresh take previews until verdict
+  const take = current ? circledTake(current.shot) ?? reviewTake(current.shot) : undefined;
+  const takeVid = useImage(take?.videoId);
+  const video = take?.videoUrl ?? takeVid;
 
   useEffect(() => {
     if (!playing || !current) return;
