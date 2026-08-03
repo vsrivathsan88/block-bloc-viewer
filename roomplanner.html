@@ -1613,6 +1613,10 @@
         for (const b of S.blockers) if (overlaps(r, b, 0.02)) return false;
         for (const [id, o] of S.recs) {
           if (id === rec.id || !isFloorSolid(o) || o.movable === false) continue;
+          // Objects sharing a collision_group pass through each other. Chairs
+          // tuck under their table, which in plan is an overlap — without this
+          // a dining set can never be pushed back in once it's been pulled out.
+          if (rec.collision_group && rec.collision_group === o.collision_group) continue;
           if (overlaps(r, rectOf(o), 0.03)) return false;
         }
         return true;
