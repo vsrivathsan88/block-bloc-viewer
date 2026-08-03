@@ -654,17 +654,17 @@
         // Foliage clumps beyond the east window wall — these are what break
         // the flat gradient up into something that reads as outside.
         for (let i = 0; i < 30; i++) {
-          const r = 0.8 + rnd() * 2.1;
+          const r = 0.8 + rnd() * 1.7;
           const shade = new THREE.Color(ex.foliage || "#7d9268").multiplyScalar(0.72 + rnd() * 0.55);
           const blob = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1),
             new THREE.MeshStandardMaterial({ color: shade, roughness: 0.92 }));
-          blob.position.copy(toThree(S.W + 2.6 + rnd() * 11, rnd() * S.D * 1.6 - S.D * 0.3, 1.0 + rnd() * 4.0));
+          blob.position.copy(toThree(S.W + 6.0 + rnd() * 12, rnd() * S.D * 1.5 - S.D * 0.25, 1.2 + rnd() * 3.6));
           blob.scale.set(1, 0.78, 1);
           parent.add(blob);
         }
         // A neighbouring facade across the way, as in the living-room views.
         const facade = box(7, 6.5, 0.3, new THREE.MeshStandardMaterial({ color: "#ddd6c6", roughness: 0.9 }));
-        facade.position.copy(toThree(S.W + 13.5, S.D * 0.35, 3.2));
+        facade.position.copy(toThree(S.W + 19.0, S.D * 0.35, 3.2));
         facade.rotation.y = Math.PI / 2;
         parent.add(facade);
 
@@ -1757,9 +1757,12 @@
 
         if (m === "orbit") {
           camera = persp;
-          persp.fov = 58; persp.updateProjectionMatrix();
-          persp.position.copy(toThree(S.W * 0.5, -5.2, 7.4));
-          controls.target.copy(toThree(S.W * 0.5, S.D * 0.46, 0.9));
+          persp.fov = 50; persp.updateProjectionMatrix();
+          // Doll-house view from beyond the north-east corner. The ceiling plane
+          // faces down, so its back face culls and the whole floor is readable
+          // from above without hiding anything.
+          persp.position.copy(toThree(S.W * 0.5, -5.6, 10.6));
+          controls.target.copy(toThree(S.W * 0.5, S.D * 0.5, 0.3));
           controls.update();
           hm.innerHTML = "3D: <kbd>drag</kbd> orbit · <kbd>scroll</kbd> zoom · <kbd>right-drag</kbd> pan";
         } else if (m === "plan") {
@@ -1949,7 +1952,9 @@
         let found = 0;
         for (let i = 0; i < S.schema.cameras.length; i++) {
           const c = S.schema.cameras[i];
-          const ok = await new Promise((res) => {
+          // The standalone build has no reference/ directory to probe, so skip
+          // straight to "not found" rather than logging five failed requests.
+          const ok = window.__NO_REFERENCE__ ? false : await new Promise((res) => {
             const im = new Image();
             im.onload = () => res(true);
             im.onerror = () => res(false);
@@ -2015,14 +2020,16 @@
       }
 
       (async function main() {
-        let schema;
-        try {
-          const res = await fetch(SCHEMA_URL);
-          if (!res.ok) throw new Error(res.status + " " + res.statusText);
-          schema = await res.json();
-        } catch (err) {
-          $("#h-sub").textContent = "could not load " + SCHEMA_URL + " — " + err.message;
-          return;
+        let schema = window.__GREAT_ROOM_SCHEMA__;   // set by the standalone build
+        if (!schema) {
+          try {
+            const res = await fetch(SCHEMA_URL);
+            if (!res.ok) throw new Error(res.status + " " + res.statusText);
+            schema = await res.json();
+          } catch (err) {
+            $("#h-sub").textContent = "could not load " + SCHEMA_URL + " — " + err.message;
+            return;
+          }
         }
         S.schema = schema;
         S.pal = schema.palette;
