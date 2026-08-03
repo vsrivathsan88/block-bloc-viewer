@@ -63,7 +63,7 @@
       #layouts select { background: rgba(255,255,255,.08); border: 1px solid var(--edge); color: var(--fg);
         padding: 5px 7px; border-radius: 7px; font: inherit; font-size: 11px; max-width: 190px; }
 
-      #help { bottom: 12px; right: 12px; padding: 10px 12px; font-size: 11px; color: var(--dim); max-width: 258px; }
+      #help { bottom: 12px; right: 12px; padding: 10px 12px; font-size: 11px; color: var(--dim); max-width: 300px; }
       #help kbd { background: rgba(255,255,255,.12); color: var(--fg); padding: 1px 5px; border-radius: 3px;
         font-family: ui-monospace, monospace; font-size: 10px; }
       #help .line { margin: 2px 0; }
@@ -136,8 +136,9 @@
 
     <div id="help" class="panel">
       <div class="line"><kbd>drag</kbd> move furniture · <kbd>click</kbd> select</div>
-      <div class="line"><kbd>Q</kbd><kbd>E</kbd> rotate 15° (<kbd>⇧</kbd> 5°) · <kbd>↑</kbd><kbd>↓</kbd> height</div>
+      <div class="line"><kbd>Q</kbd><kbd>E</kbd> rotate 15° (<kbd>⇧</kbd> 5°) · <kbd>PgUp</kbd><kbd>PgDn</kbd> height</div>
       <div class="line"><kbd>Del</kbd> hide · <kbd>Esc</kbd> deselect</div>
+      <div class="line" style="margin-top:5px"><kbd>WASD</kbd> fly · <kbd>↑↓←→</kbd> look · <kbd>R</kbd><kbd>F</kbd> up/down</div>
       <div class="line" id="help-mode">orbit: <kbd>drag</kbd> rotate · <kbd>scroll</kbd> zoom</div>
     </div>
 
@@ -510,7 +511,8 @@
       const controls = new OrbitControls(persp, renderer.domElement);
       controls.enableDamping = true;
       controls.dampingFactor = 0.075;
-      controls.maxPolarAngle = Math.PI * 0.495;
+      controls.minPolarAngle = 0;            // let the mouse look straight down…
+      controls.maxPolarAngle = Math.PI;      // …and straight up, matching the keyboard
       const planControls = new OrbitControls(ortho, renderer.domElement);
       planControls.enableRotate = false;
       planControls.enableDamping = true;
@@ -1729,9 +1731,10 @@
         if (e.code === "KeyQ") { rotate(S.sel, -step); e.preventDefault(); }
         if (e.code === "KeyE") { rotate(S.sel, step); e.preventDefault(); }
         if (e.code === "Delete" || e.code === "Backspace") { toggleHidden(S.sel); e.preventDefault(); }
-        if (e.code === "ArrowUp" || e.code === "ArrowDown") {
+        // Object height is on PageUp/PageDown; the arrow keys drive the camera.
+        if (e.code === "PageUp" || e.code === "PageDown") {
           if (rec.mount === "wall" || rec.elevation > 0) {
-            rec.elevation = Math.max(0, Math.min(S.H - rec.size.h, rec.elevation + (e.code === "ArrowUp" ? 0.05 : -0.05)));
+            rec.elevation = Math.max(0, Math.min(S.H - rec.size.h, rec.elevation + (e.code === "PageUp" ? 0.05 : -0.05)));
             placeGroup(S.sel); syncOutline(); syncInspector();
           }
           e.preventDefault();
@@ -1815,6 +1818,7 @@
 
       function setMode(m) {
         S.mode = m;
+        fly.keys.clear(); fly.on = false;   // leaving 3D drops any fly takeover
         for (const b of document.querySelectorAll("#modes button[data-mode]"))
           b.classList.toggle("on", b.dataset.mode === m);
         controls.enabled = m === "orbit";
@@ -1833,7 +1837,7 @@
           persp.position.copy(toThree(S.W * 0.5, -5.6, 10.6));
           controls.target.copy(toThree(S.W * 0.5, S.D * 0.5, 0.3));
           controls.update();
-          hm.innerHTML = "3D: <kbd>drag</kbd> orbit · <kbd>scroll</kbd> zoom · <kbd>right-drag</kbd> pan";
+          hm.innerHTML = "3D · <kbd>drag</kbd> orbit · <kbd>scroll</kbd> zoom · <kbd>WASD</kbd>/<kbd>↑↓←→</kbd> fly · click <b>3D</b> to re-frame";
         } else if (m === "plan") {
           camera = ortho;
           fitOrtho();
@@ -1877,6 +1881,106 @@
       });
       addEventListener("keydown", (e) => { if (S.mode === "walk") walk.keys.add(e.code); });
       addEventListener("keyup", (e) => walk.keys.delete(e.code));
+
+      /* ─────────── keyboard free-fly camera for the 3D view ───────────
+         Coexists with OrbitControls rather than replacing it. Pressing a nav
+         key takes over: we stop calling controls.update() and drive the camera
+         from fly.{pos,yaw,pitch} instead. Dragging the mouse hands control
+         back. While flying we keep controls.target parked 3 m ahead of the
+         camera, so OrbitControls always has a sane target and the first drag
+         after flying doesn't snap. Pitch is deliberately unclamped — looking
+         past vertical inverts the view, which is what full 360 means. */
+      const FLY = { move: 2.5, fast: 6.8, look: 1.9 };   // m/s, m/s, rad/s
+      const fly = { on: false, yaw: 0, pitch: 0, pos: new THREE.Vector3(), keys: new Set() };
+      const NAV_KEYS = new Set([
+        "KeyW", "KeyA", "KeyS", "KeyD", "KeyR", "KeyF",
+        "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+      ]);
+      const _q = new THREE.Quaternion();
+      const _e = new THREE.Euler(0, 0, 0, "YXZ");
+      const _fwd = new THREE.Vector3();
+      const _right = new THREE.Vector3();
+
+      function flyQuat() {
+        _e.set(fly.pitch, fly.yaw, 0);
+        return _q.setFromEuler(_e);
+      }
+      // Seed the fly state from wherever the orbit camera currently is, so
+      // taking over is seamless in both directions.
+      function engageFly() {
+        if (fly.on) return;
+        fly.pos.copy(persp.position);
+        _e.setFromQuaternion(persp.quaternion, "YXZ");
+        fly.yaw = _e.y;
+        fly.pitch = _e.x;
+        fly.on = true;
+        $("#help-mode").innerHTML =
+          "flying · <kbd>WASD</kbd> move · <kbd>↑↓←→</kbd> look · <kbd>R</kbd><kbd>F</kbd> up/down · <kbd>⇧</kbd> fast · <kbd>Home</kbd> level · click <b>3D</b> to re-frame";
+      }
+      function releaseFly() {
+        if (!fly.on) return;
+        fly.on = false;
+        $("#help-mode").innerHTML =
+          "3D · <kbd>drag</kbd> orbit · <kbd>scroll</kbd> zoom · <kbd>WASD</kbd>/<kbd>↑↓←→</kbd> fly";
+      }
+
+      function stepFly(dt) {
+        const k = fly.keys;
+        const yawIn = (k.has("ArrowLeft") ? 1 : 0) - (k.has("ArrowRight") ? 1 : 0);
+        const pitchIn = (k.has("ArrowUp") ? 1 : 0) - (k.has("ArrowDown") ? 1 : 0);
+        fly.yaw += yawIn * FLY.look * dt;
+        fly.pitch += pitchIn * FLY.look * dt;
+        if (fly.yaw > Math.PI) fly.yaw -= Math.PI * 2;
+        if (fly.yaw < -Math.PI) fly.yaw += Math.PI * 2;
+
+        const q = flyQuat();
+        _fwd.set(0, 0, -1).applyQuaternion(q);
+        _right.set(1, 0, 0).applyQuaternion(q);
+        const fast = k.has("ShiftLeft") || k.has("ShiftRight");
+        const sp = (fast ? FLY.fast : FLY.move) * dt;
+        const f = (k.has("KeyW") ? 1 : 0) - (k.has("KeyS") ? 1 : 0);
+        const r = (k.has("KeyD") ? 1 : 0) - (k.has("KeyA") ? 1 : 0);
+        const u = (k.has("KeyR") ? 1 : 0) - (k.has("KeyF") ? 1 : 0);
+        if (f) fly.pos.addScaledVector(_fwd, f * sp);
+        if (r) fly.pos.addScaledVector(_right, r * sp);
+        if (u) fly.pos.y += u * sp;
+
+        // Generous leash so you can inspect from outside without getting lost.
+        const LX = S.W / 2 + 22, LZ = S.D / 2 + 22;
+        fly.pos.x = Math.max(-LX, Math.min(LX, fly.pos.x));
+        fly.pos.z = Math.max(-LZ, Math.min(LZ, fly.pos.z));
+        fly.pos.y = Math.max(-6, Math.min(34, fly.pos.y));
+
+        persp.position.copy(fly.pos);
+        persp.quaternion.copy(q);
+        controls.target.copy(fly.pos).addScaledVector(_fwd, 3);
+      }
+
+      addEventListener("keydown", (e) => {
+        if (S.mode !== "orbit") return;
+        if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+        if (e.code === "Home") {
+          engageFly();
+          fly.pitch = 0;                       // recover from an inverted view
+          e.preventDefault();
+          return;
+        }
+        if (!NAV_KEYS.has(e.code)) return;
+        engageFly();
+        fly.keys.add(e.code);
+        e.preventDefault();                    // stop arrow keys scrolling the page
+      });
+      addEventListener("keyup", (e) => fly.keys.delete(e.code));
+      // Losing focus mid-press would otherwise leave the camera drifting.
+      addEventListener("blur", () => fly.keys.clear());
+      renderer.domElement.addEventListener("pointerdown", () => releaseFly());
+      // While flying, the wheel should push along the view axis; OrbitControls'
+      // own zoom is relative to a target that is only 3 m away and reads wrong.
+      renderer.domElement.addEventListener("wheel", (e) => {
+        if (!fly.on || S.mode !== "orbit") return;
+        _fwd.set(0, 0, -1).applyQuaternion(flyQuat());
+        fly.pos.addScaledVector(_fwd, Math.max(-2, Math.min(2, -e.deltaY * 0.004)));
+      }, { passive: true });
 
       function applyWalk() {
         persp.position.copy(walk.pos);
@@ -2081,7 +2185,7 @@
       function loop(now) {
         const dt = Math.min(0.05, (now - prev) / 1000);
         prev = now;
-        if (S.mode === "orbit") controls.update();
+        if (S.mode === "orbit") { if (fly.on) stepFly(dt); else controls.update(); }
         if (S.mode === "plan") { planControls.update(); syncLabels(); }
         if (S.mode === "walk") stepWalk(dt);
         renderer.render(scene, camera);
@@ -2132,7 +2236,7 @@
         requestAnimationFrame(loop);
       })();
 
-      window.DEBUG = { S, THREE, scene, get camera() { return camera; } };
+      window.DEBUG = { S, THREE, scene, fly, stepFly, get camera() { return camera; } };
     </script>
   </body>
 </html>
