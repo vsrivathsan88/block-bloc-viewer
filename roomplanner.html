@@ -242,6 +242,49 @@
         cached(`woodm|${hex}|${rough}`, () =>
           new THREE.MeshStandardMaterial({ map: woodTex(hex), roughness: rough, metalness: 0.05 }));
 
+      /* Soft contact shadow laid under each floor object. A single shadow-mapped
+         sun can't produce the dark, tight occlusion where furniture meets the
+         floor, and without it everything reads as floating slightly. */
+      const contactMat = () => cached("contact", () => {
+        // Stacked rounded rects, largest first, build a soft-edged dark patch
+        // that follows the footprint. A radial gradient would put its darkest
+        // part in the middle — entirely hidden under the object — leaving only
+        // a faint halo. The shadow has to read at the edge, where it touches.
+        // The plane is 1.55x the footprint, so the object's silhouette lands at
+        // inset ~45 of 256. Darkness has to peak *there* and fade outward — the
+        // only part of this texture anyone ever sees is the ring outside the
+        // silhouette, so that ring is where the shadow has to live.
+        const EDGE = 45;
+        const t = tex(256, 256, (g) => {
+          const steps = 24;
+          for (let i = 0; i <= steps; i++) {
+            const k = i / steps;                    // 0 = outer edge, 1 = silhouette
+            const inset = 5 + k * (EDGE - 5);
+            g.fillStyle = `rgba(10,7,5,${(0.055 * k * k).toFixed(4)})`;
+            g.beginPath();
+            g.roundRect(inset, inset, 256 - inset * 2, 256 - inset * 2, 26);
+            g.fill();
+          }
+          g.fillStyle = "rgba(10,7,5,.30)";         // core, hidden under the object
+          g.beginPath();
+          g.roundRect(EDGE, EDGE, 256 - EDGE * 2, 256 - EDGE * 2, 20);
+          g.fill();
+        });
+        t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+        return new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false });
+      });
+      function addContactShadow(group, rec) {
+        if ((rec.mount || "floor") !== "floor" || rec.elevation > 0.02) return;
+        if (rec.type === "rug" || rec.size.h < 0.25) return;
+        const sh = new THREE.Mesh(
+          new THREE.PlaneGeometry(rec.size.w * 1.55, rec.size.d * 1.55), contactMat());
+        sh.rotation.x = -Math.PI / 2;
+        sh.position.y = 0.016;          // clears the rug's 0.012 top face
+        sh.renderOrder = 2;
+        sh.userData.oid = rec.id;
+        group.add(sh);
+      }
+
       function buildTextures(pal) {
         // Wide-plank wood floor. One tile = 1.2 m × 1.2 m, planks running north–south.
         TEX.floor = tex(512, 512, (g) => {
@@ -746,14 +789,25 @@
           "#" + new THREE.Color(o.colors?.body || "#8b8d93").multiplyScalar(1.12).getHexString();
         const cush = fabricMat(cushHex, 0.86);
         g.add(at(box(w, 0.24, d, body), 0, 0.12, 0));
-        g.add(at(box(w, h - 0.24, 0.17, body), 0, 0.24 + (h - 0.24) / 2, -d / 2 + 0.085));
-        for (const s of [-1, 1])
-          g.add(at(box(0.17, h - 0.30, d - 0.04, body), s * (w / 2 - 0.085), 0.24 + (h - 0.30) / 2, 0.02));
+        g.add(at(box(w, h - 0.32, 0.17, body), 0, 0.24 + (h - 0.32) / 2, -d / 2 + 0.085));
+        // Rolled top rail — a hard-edged slab is what makes a sofa read as a box.
+        const backRoll = cyl(0.085, 0.085, w, body, 16);
+        backRoll.rotation.z = Math.PI / 2;
+        g.add(at(backRoll, 0, h - 0.085, -d / 2 + 0.085));
+        for (const s of [-1, 1]) {
+          g.add(at(box(0.17, h - 0.38, d - 0.04, body), s * (w / 2 - 0.085), 0.24 + (h - 0.38) / 2, 0.02));
+          const armRoll = cyl(0.085, 0.085, d - 0.04, body, 16);
+          armRoll.rotation.x = Math.PI / 2;
+          g.add(at(armRoll, s * (w / 2 - 0.085), h - 0.155, 0.02));
+        }
         const n = Math.max(2, Math.round((w - 0.34) / 0.74));
         const cw = (w - 0.34) / n;
         for (let i = 0; i < n; i++) {
           const x = -w / 2 + 0.17 + cw * (i + 0.5);
           g.add(at(box(cw - 0.025, 0.17, d - 0.28, cush), x, 0.325, 0.055));
+          const roll = cyl(0.085, 0.085, cw - 0.025, cush, 14);
+          roll.rotation.z = Math.PI / 2;
+          g.add(at(roll, x, 0.325, 0.055 + (d - 0.28) / 2));
           const bc = box(cw - 0.045, h - 0.60, 0.16, cush);
           bc.position.set(x, 0.41 + (h - 0.60) / 2, -d / 2 + 0.20);
           bc.rotation.x = -0.09;
@@ -769,10 +823,20 @@
         const g = new THREE.Group();
         const body = fabricMat(o.colors?.body || "#6f737b", 0.87);
         g.add(at(box(w, 0.26, d, body), 0, 0.13, 0));
-        g.add(at(box(w, h - 0.26, 0.16, body), 0, 0.26 + (h - 0.26) / 2, -d / 2 + 0.08));
-        for (const s of [-1, 1])
-          g.add(at(box(0.15, h - 0.34, d - 0.05, body), s * (w / 2 - 0.075), 0.26 + (h - 0.34) / 2, 0.02));
+        g.add(at(box(w, h - 0.34, 0.16, body), 0, 0.26 + (h - 0.34) / 2, -d / 2 + 0.08));
+        const chBackRoll = cyl(0.08, 0.08, w, body, 16);
+        chBackRoll.rotation.z = Math.PI / 2;
+        g.add(at(chBackRoll, 0, h - 0.08, -d / 2 + 0.08));
+        for (const s of [-1, 1]) {
+          g.add(at(box(0.15, h - 0.42, d - 0.05, body), s * (w / 2 - 0.075), 0.26 + (h - 0.42) / 2, 0.02));
+          const ar = cyl(0.075, 0.075, d - 0.05, body, 16);
+          ar.rotation.x = Math.PI / 2;
+          g.add(at(ar, s * (w / 2 - 0.075), h - 0.155, 0.02));
+        }
         g.add(at(box(w - 0.30, 0.16, d - 0.24, body), 0, 0.34, 0.045));
+        const seatRoll = cyl(0.08, 0.08, w - 0.30, body, 14);
+        seatRoll.rotation.z = Math.PI / 2;
+        g.add(at(seatRoll, 0, 0.34, 0.045 + (d - 0.24) / 2));
         const bc = box(w - 0.32, h - 0.56, 0.14, body);
         bc.position.set(0, 0.42 + (h - 0.56) / 2, -d / 2 + 0.19);
         bc.rotation.x = -0.1; g.add(bc);
@@ -1406,6 +1470,7 @@
             m.receiveShadow = true;
             m.userData.oid = o.id;
           });
+          addContactShadow(g, rec);   // after the traverse — it must not cast
           g.userData.oid = o.id;
           S.groups.set(o.id, g);
           S.items.add(g);

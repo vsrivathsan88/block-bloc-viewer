@@ -45,7 +45,7 @@
     "cherry": "#6f3f2b",
     "quartz": "#f1efe9",
     "stainless": "#b9bcc0",
-    "velvet_blue": "#7d9cc0",
+    "velvet_blue": "#8098b2",
     "fabric_grey": "#8b8d93",
     "fabric_cream": "#ddd4c3",
     "carpet": "#a3937d"
@@ -136,7 +136,7 @@
       "size": { "w": 0.20, "d": 0.20, "h": 0.20 }, "elevation": 1.68, "movable": true, "colors": { "body": "#c8c2b4" } },
 
     { "id": "sofa_blue", "label": "blue velvet sofa", "type": "sofa", "position": { "x": 3.53, "y": 0.545 }, "rotation_deg": 180,
-      "size": { "w": 2.13, "d": 0.94, "h": 0.86 }, "movable": true, "colors": { "body": "#7d9cc0", "cushion": "#8aa8c9" } },
+      "size": { "w": 2.13, "d": 0.94, "h": 0.86 }, "movable": true, "colors": { "body": "#8098b2", "cushion": "#8da4bc" } },
     { "id": "loveseat_grey", "label": "grey loveseat", "type": "sofa", "position": { "x": 5.555, "y": 1.48 }, "rotation_deg": 90,
       "size": { "w": 1.85, "d": 0.94, "h": 0.86 }, "movable": true, "colors": { "body": "#7f838c", "cushion": "#8b8f98" } },
     { "id": "accent_chair", "label": "grey accent chair", "type": "armchair", "position": { "x": 2.25, "y": 2.35 }, "rotation_deg": 300,
