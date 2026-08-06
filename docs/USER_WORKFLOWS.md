@@ -31,7 +31,19 @@ registry" fills the model pickers.
 registry unreachable → model fields stay free-text.
 **Done when:** model picker shows registry slugs; one live ⚡ returns an MP4.
 
-## W1 · Pick a world
+## W1 · Pick a world — or a single image
+
+**Image entry (built):** the same import dialog takes an uploaded image, a
+pasted image URL, or a FARM T2I prompt ("imagine one"). The image becomes
+the whole set: one reference frame at the identity pose — FARM AR is a
+stateless rig, so a single posed image is a first-class context ("dream
+beyond"). The shutter deals shots from that frame; each shot's arrow +
+prompt drives generation with the reference as the only anchor (auto-
+context is bypassed — several images at one pose is contradictory
+conditioning). No Marble world, no Developer key, works fully in hosted
+previews. Trade-off vs. world mode: no cross-shot spatial consistency —
+each generation dreams its own geometry.
+**APIs:** `tasks:farmT2i` ({prompt} → image) for "imagine one"; farmAr as usual.
 
 **Steps (built):** open app → **world import** (first run auto-opens; the
 world chip in the topbar reopens it any time): one field takes a share URL,

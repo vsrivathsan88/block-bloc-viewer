@@ -71,6 +71,18 @@ A storyboarding app on top of this viewer + FARM AR (`/app` source, built output
 
 UI is bound to the [open-design](https://github.com/nexu-io/open-design) **lingo** tokens (vendored in `app/src/styles.css`); controls are icon-only with tooltips. `VITE_DEMO=1` builds swap the viewer for a self-contained blockout world (`app/src/lib/demoViewer.ts`) so hosted previews work without CDN access.
 
+### Image mode — storyboard from a single picture
+
+The import dialog also takes a **single image** (upload, pasted image URL,
+or a FARM T2I prompt via "imagine one"). FARM AR is a stateless rig, so one
+posed reference image is a first-class context ("dream beyond"): the image
+becomes the set, the shutter deals shots from its reference frame, drawn
+arrows set relative camera moves, and each generation is conditioned on the
+reference alone (auto-context is bypassed — several images at one pose is
+contradictory conditioning). Zero setup — no Marble world, no keys — and it
+works fully in hosted previews. World mode remains the path when cross-shot
+spatial consistency matters.
+
 ### FARM AR integration
 
 Every capture is a **posed frame** (a spatial anchor). A shot's FARM context is an ordered, user-editable list of anchors. The client (`app/src/farm/client.ts`) conforms to the canonical spec vendored at [`docs/farm_ar_api_spec.md`](docs/farm_ar_api_spec.md):

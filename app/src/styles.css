@@ -523,6 +523,17 @@ label.field {
 .toolbar .ib.on { background: #fff; color: var(--ink); }
 .toolbar .ib.bolt { color: var(--warn); }
 
+/* image mode: the set is one reference image, centered like a plate */
+.image-stage {
+  position: absolute; inset: 0; display: flex;
+  align-items: center; justify-content: center; background: #101018;
+}
+.image-stage img { max-width: 100%; max-height: 100%; object-fit: contain; user-select: none; }
+
+/* "or start from a single image" divider in the world import */
+.wi-or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 11px; margin-top: 4px; }
+.wi-or::before, .wi-or::after { content: ""; flex: 1; height: 1px; background: var(--border-soft, rgba(0,0,0,.12)); }
+
 /* honest banner: imported worlds can't stream in a hosted preview */
 .demo-note {
   position: absolute; top: 54px; left: 50%; transform: translateX(-50%);

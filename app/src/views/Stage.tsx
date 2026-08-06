@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CapturedFrame } from "../model/types";
-import { allShots, frameById, newShot, nextShotNumber, uid } from "../model/types";
+import { allShots, frameById, isImageWorld, newShot, nextShotNumber, uid } from "../model/types";
 import { inferAngle, inferLensMm } from "../lib/inference";
 import {
   captureFrame, getViewer, getWorldBboxXZ, onViewerKey, setViewerPose, VIEWER_PATH,
@@ -12,7 +12,7 @@ import { DEMO_MODE, DEMO_SPZ, DEMO_VIEWER_HTML } from "../lib/demoViewer";
 import { impliedEndPose } from "../lib/movement";
 import { pathPoseAt, shouldKeepWaypoint } from "../lib/path";
 import { db } from "../store/db";
-import { primeImageCache, useProject } from "../store/useProject";
+import { primeImageCache, useImage, useProject } from "../store/useProject";
 import PlanCanvas, { type BboxXZ, type PlannedCam, type ShotMark, yawOfQuat, yawQuat } from "../components/PlanCanvas";
 import TakeReview, { type Take } from "../components/TakeReview";
 import FilmStrip from "../components/FilmStrip";
@@ -23,6 +23,9 @@ const FALLBACK_BBOX: BboxXZ = { min: [-4, -4], max: [4, 4] };
 
 export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: string) => void; onPlay: () => void }) {
   const { project, dispatch } = useProject();
+  // image mode: the set is a single reference image, no viewer to drive
+  const imageWorld = isImageWorld(project.world);
+  const refImg = useImage(project.world.imageId);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [planned, setPlanned] = useState<PlannedCam[]>([]);
   const [takes, setTakes] = useState<Take[] | null>(null);
@@ -47,12 +50,13 @@ export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: str
 
   useEffect(() => {
     setBbox(null);
+    if (imageWorld) return;
     const t = window.setInterval(() => {
       const b = getWorldBboxXZ(iframeRef.current);
       if (b) { setBbox(b); window.clearInterval(t); }
     }, 1000);
     return () => window.clearInterval(t);
-  }, [viewerSrc]);
+  }, [viewerSrc, imageWorld]);
 
   const effBbox = useMemo<BboxXZ>(() => {
     if (bbox) return bbox;
@@ -111,7 +115,7 @@ export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: str
   // the capture pose — FARM anchors exist before the user does anything.
   const autoScanned = useRef(false);
   useEffect(() => {
-    if (!bbox || autoScanned.current || project.frames.length > 0) return;
+    if (imageWorld || !bbox || autoScanned.current || project.frames.length > 0) return;
     autoScanned.current = true;
     (async () => {
       const v = getViewer(iframeRef.current);
@@ -149,13 +153,32 @@ export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: str
     return frame;
   }
 
-  // THE verb. Shoot what you see → a shot lands on the strip.
+  // THE verb. Shoot what you see → a shot lands on the strip. In image
+  // mode every shot starts from the one reference frame — the shutter just
+  // deals another card.
   async function shutter() {
+    const scene = project.scenes[project.scenes.length - 1];
+    const num = nextShotNumber(scene);
+    if (imageWorld) {
+      const ref = frameById(project, project.world.refFrameId);
+      if (!ref) return;
+      setFlashId((n) => n + 1);
+      dispatch({
+        type: "addShot",
+        sceneId: scene.id,
+        shot: {
+          ...newShot(num),
+          frameId: ref.id,
+          contextFrameIds: [ref.id],
+          lensMm: inferLensMm(ref.fov),
+          angle: inferAngle(ref),
+        },
+      });
+      return;
+    }
     const cap = captureFrame(iframeRef.current);
     if (!cap) return;
     setFlashId((n) => n + 1);
-    const scene = project.scenes[project.scenes.length - 1];
-    const num = nextShotNumber(scene);
     const frame = await bankFrame(cap, `shot ${num}`);
     dispatch({
       type: "addShot",
@@ -354,9 +377,22 @@ export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: str
     return () => { un(); iframe?.removeEventListener("load", attach); window.clearTimeout(t); };
   }, [viewerSrc]);
 
+  // image mode has no iframe to catch keys — C works at the window level
+  useEffect(() => {
+    if (!imageWorld) return;
+    const h = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (e.code === "KeyC" && t.tagName !== "INPUT" && t.tagName !== "TEXTAREA") shutterRef.current();
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [imageWorld]);
+
   return (
     <div className="stage">
-      {DEMO_MODE ? (
+      {imageWorld ? (
+        <div className="image-stage">{refImg && <img src={refImg} alt="" draggable={false} />}</div>
+      ) : DEMO_MODE ? (
         <iframe ref={iframeRef} srcDoc={DEMO_VIEWER_HTML} title="world" />
       ) : (
         <iframe ref={iframeRef} src={viewerSrc} title="world" />
@@ -365,6 +401,7 @@ export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: str
       <div key={flashId} className={flashId ? "shutter-flash" : ""} />
 
       {/* mini-map: click to expand, drag to place cameras, rig icon shoots */}
+      {!imageWorld && (
       <div className={`minimap ${mapOpen ? "open" : ""}`}>
         <PlanCanvas
           bbox={effBbox}
@@ -392,27 +429,34 @@ export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: str
           </div>
         )}
       </div>
+      )}
 
-      {/* the imported world can't stream inside a hosted preview — say so */}
-      {DEMO_MODE && project.world.spzUrl !== DEMO_SPZ && (
+      {/* the imported world can't stream inside a hosted preview — say so
+          (single images render fine anywhere) */}
+      {DEMO_MODE && !imageWorld && project.world.spzUrl !== DEMO_SPZ && (
         <div className="demo-note">
           this preview renders the demo set — run the app locally (README) to shoot in “{project.world.title}”
         </div>
       )}
 
-      {/* Figma-style floating toolbar — icons carry small labels */}
+      {/* Figma-style floating toolbar — icons carry small labels; the
+          viewer-driven tools (plan/path/export) only exist in world mode */}
       <div className="toolbar">
-        <button className={`ib ${mapOpen ? "on" : ""}`} title="floor plan — place cameras on the map" onClick={() => { setMapOpen(!mapOpen); if (mapOpen) setPlanned([]); }}>
-          <IconMap /><span className="lbl">plan</span>
-        </button>
-        <button
-          className={`ib ${recordingPath ? "rec" : ""}`}
-          title={recordingPath ? "stop — the walk becomes the shot" : "record a camera path: press, walk the move, press again"}
-          onClick={togglePathRecord}
-        >
-          <IconPath /><span className="lbl">{recordingPath ? "stop" : "path"}</span>
-        </button>
-        <button className="shutter" title="shoot this frame (C)" onClick={shutter}>
+        {!imageWorld && (
+          <button className={`ib ${mapOpen ? "on" : ""}`} title="floor plan — place cameras on the map" onClick={() => { setMapOpen(!mapOpen); if (mapOpen) setPlanned([]); }}>
+            <IconMap /><span className="lbl">plan</span>
+          </button>
+        )}
+        {!imageWorld && (
+          <button
+            className={`ib ${recordingPath ? "rec" : ""}`}
+            title={recordingPath ? "stop — the walk becomes the shot" : "record a camera path: press, walk the move, press again"}
+            onClick={togglePathRecord}
+          >
+            <IconPath /><span className="lbl">{recordingPath ? "stop" : "path"}</span>
+          </button>
+        )}
+        <button className="shutter" title={imageWorld ? "new shot from this image (C)" : "shoot this frame (C)"} onClick={shutter}>
           <IconShutter />
         </button>
         <button
@@ -425,9 +469,11 @@ export default function Stage({ onOpenShot, onPlay }: { onOpenShot: (shotId: str
         >
           <IconBolt /><span className="lbl">generate</span>
         </button>
-        <button className="ib" title="export the whole board as one flythrough (.webm)" onClick={exportFlythrough} disabled={!!exportNote}>
-          <IconFilm /><span className="lbl">export</span>
-        </button>
+        {!imageWorld && (
+          <button className="ib" title="export the whole board as one flythrough (.webm)" onClick={exportFlythrough} disabled={!!exportNote}>
+            <IconFilm /><span className="lbl">export</span>
+          </button>
+        )}
         <button className="ib" title="play the cut" onClick={onPlay}>
           <IconPlay /><span className="lbl">play</span>
         </button>

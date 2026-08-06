@@ -22,7 +22,14 @@ export async function generateShot(
   const keyframe = frameById(project, shot.castFrameId) ?? cleanFrame;
   const cfg = loadFarmConfig();
 
-  const ids = autoContextIds(project, shot).map((id) =>
+  // image mode: the context is exactly the keyframe. Auto-context gathers
+  // by proximity, and every image-world frame sits at the identity pose —
+  // several different images at one pose is contradictory conditioning.
+  const baseIds =
+    project.world.kind === "image" && shot.frameId
+      ? [shot.frameId]
+      : autoContextIds(project, shot);
+  const ids = baseIds.map((id) =>
     id === shot.frameId && shot.castFrameId ? shot.castFrameId : id,
   );
   const ctx = [];

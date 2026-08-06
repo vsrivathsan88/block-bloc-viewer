@@ -58,9 +58,21 @@
             "title"
           ],
           "properties": {
+            "kind": {
+              "enum": ["splat", "image"],
+              "description": "what the project shoots in: a Marble splat world (default) or a single reference image (FARM AR single-image rig)"
+            },
             "spzUrl": {
               "type": "string",
-              "format": "uri"
+              "description": "splat URL; empty string for image worlds"
+            },
+            "imageId": {
+              "type": "string",
+              "description": "images-store key of the reference image (image worlds)"
+            },
+            "refFrameId": {
+              "type": "string",
+              "description": "the reference CapturedFrame every shot starts from (image worlds)"
             },
             "colliderUrl": {
               "type": "string",

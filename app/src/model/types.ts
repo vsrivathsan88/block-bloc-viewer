@@ -145,7 +145,15 @@ export interface SceneGroup {
 }
 
 export interface WorldRef {
-  spzUrl: string;
+  /** what the project shoots in: a Marble splat world (default) or a single
+   * reference image — FARM AR is a stateless rig; one posed image is a
+   * first-class context ("dream beyond") */
+  kind?: "splat" | "image";
+  spzUrl: string; // "" for image worlds
+  /** images-store key of the reference image (image worlds) */
+  imageId?: string;
+  /** the reference CapturedFrame every shot starts from (image worlds) */
+  refFrameId?: string;
   colliderUrl?: string;
   title: string;
   /** Marble world id — when set, the fields above were resolved from the
@@ -170,6 +178,10 @@ export interface Project {
   createdAt: number;
   updatedAt: number;
   version: 1;
+}
+
+export function isImageWorld(w: WorldRef): boolean {
+  return w.kind === "image";
 }
 
 export const uid = () =>

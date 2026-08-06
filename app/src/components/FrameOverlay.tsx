@@ -218,9 +218,11 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
           <button className={`ib ${tool === "pencil" ? "on" : ""}`} title="pencil — sketch" onClick={() => setTool("pencil")}><IconPencil /></button>
           <button className="ib" title="undo stroke" disabled={!shot.strokes.length}
             onClick={() => patch({ strokes: shot.strokes.slice(0, -1) })}><IconUndo /></button>
-          <button className="ib" title="preview the move in the world" disabled={!keyframe} onClick={previewMove}>
-            <IconPlay />
-          </button>
+          {project.world.kind !== "image" && (
+            <button className="ib" title="preview the move in the world" disabled={!keyframe} onClick={previewMove}>
+              <IconPlay />
+            </button>
+          )}
 
           <span className="sep" />
 
