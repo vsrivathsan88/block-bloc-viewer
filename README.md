@@ -1,5 +1,76 @@
 # block-bloc-viewer
 
+Three viewers in this repo:
+
+| page | what it is | renderer |
+|------|-----------|----------|
+| `index.html` | splat viewer for block-bloc worlds | `@sparkjsdev/spark` |
+| `blockout.html` | schema blockout inspector | plain three.js |
+| **`roomplanner.html`** | **photo-derived room reconstruction + layout editor** | **plain three.js** |
+
+---
+
+## roomplanner.html — photo → 3D room, rearrangeable
+
+A mid-fidelity reconstruction of a real great room (kitchen + dining nook +
+living room), built from five listing photos and rendered as editable
+procedural geometry. **No splats, no Marble, no World Labs dependency** — plain
+three.js plus an `OrbitControls` import, and every texture is generated in a
+`<canvas>` at load, so there are no image assets to fetch.
+
+    https://vsrivathsan88.github.io/block-bloc-viewer/roomplanner.html
+
+### Modes
+
+- **3D** — orbit the room. Drag furniture directly; it snaps to walls and to
+  other objects' edges and refuses poses that overlap something solid (the
+  selection outline turns red and the object springs back on release).
+- **Plan** — top-down orthographic with labels, which is the fastest way to
+  actually rearrange. Ceiling fans and pendants are dropped from this view so
+  they don't cover the furniture beneath them; select one from the sidebar and
+  it reappears, draggable.
+- **Walk** — pointer-lock first person at 1.62 m eye height. WASD, shift to
+  run, wall and furniture collision with slide-along, and the staircase lifts
+  you as you climb it.
+- **Compare** — jumps to each photo's estimated camera pose and cross-fades the
+  original photo over the render. Needs the JPGs in `reference/` (see
+  `reference/README.md`); the poses work regardless.
+
+### Editing
+
+| action | how |
+|--------|-----|
+| move | drag, in 3D or Plan |
+| rotate | `Q` / `E` for 15°, hold shift for 5° |
+| raise / lower wall + shelf items | `↑` / `↓` |
+| hide | `Del` (reversible from the sidebar) |
+| revert one object | *reset pose* in the inspector |
+| bypass snapping | hold shift while dragging |
+
+Four layout presets ship with the schema — *as photographed*, *conversation
+pit*, *face the console wall*, *big table* — and you can save your own to
+`localStorage` or encode the whole arrangement into a URL with **copy link**.
+
+### The schema
+
+`schemas/great-room.json` holds the reconstruction: wall segments, openings
+with sill/head heights, per-object footprints, colours, mount type
+(floor / wall / ceiling), estimated camera poses, and layout presets. Load a
+different one with `?schema=<url>`.
+
+`provenance` records how the room was solved and — deliberately — what is still
+uncertain, so nobody mistakes an inference for a measurement. Objects carry an
+optional `on` field so props ride along when their host table moves.
+
+The geometry is only as good as five photos allow: plan relationships are
+well-constrained by objects visible in multiple views, absolute dimensions are
+within roughly 5–10%. Correct anything that looks wrong by dragging it and
+saving a layout.
+
+---
+
+## index.html — splat viewer
+
 Public splat viewer for [block-bloc](https://github.com/vsrivathsan88) worlds (sketch → Blender blockout → World Labs Marble). Loads `.spz` directly from the public Marble CDN. No auth required.
 
 Renders via **[`@sparkjsdev/spark`](https://github.com/sparkjs-dev/spark)** — World Labs' own Gaussian splat library.
