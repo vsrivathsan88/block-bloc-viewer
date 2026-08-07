@@ -28,12 +28,20 @@ function dist(a: Vec3, b: Vec3): number {
 
 /** Auto-pick FARM context: the shot's keyframe plus its nearest ≤3 other
  * anchors, ordered farthest → nearest with the keyframe LAST (the model
- * weights recent positions most). Users never curate this; it just works. */
-export function autoContextIds(project: Project, shot: Shot, max = 3): string[] {
+ * weights recent positions most). Users never curate this; it just works.
+ * `eligible` narrows the candidate pool (e.g. image mode excludes frames
+ * sitting at the keyframe's own pose — same pose + different content is
+ * contradictory conditioning). */
+export function autoContextIds(
+  project: Project,
+  shot: Shot,
+  max = 3,
+  eligible?: (f: CapturedFrame) => boolean,
+): string[] {
   const key = frameById(project, shot.frameId);
   if (!key) return shot.contextFrameIds;
   const near = project.frames
-    .filter((f) => f.id !== key.id && f.id !== shot.castFrameId)
+    .filter((f) => f.id !== key.id && f.id !== shot.castFrameId && (!eligible || eligible(f)))
     .map((f) => ({ id: f.id, d: dist(f.pose.position, key.pose.position) }))
     .sort((a, b) => a.d - b.d)
     .slice(0, max)

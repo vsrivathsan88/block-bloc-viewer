@@ -8,6 +8,7 @@ import { useRef, useState } from "react";
 import type { Project, Shot, Take } from "../model/types";
 import { allShots, displayFrameId, frameById, reviewTake, takeStatus } from "../model/types";
 import { MOVEMENT_GLYPH } from "../lib/movement";
+import { harvestCircledTake } from "../farm/harvest";
 import { useImage, useProject } from "../store/useProject";
 import { IconCheck, IconClose } from "./icons";
 
@@ -33,11 +34,13 @@ function StripFrame({ project, shot, index, active, lifted, over }: {
   const pendingSrc = pending?.videoUrl ?? pendingVid;
 
   const setTakes = (takes: Take[]) => dispatch({ type: "updateShot", shotId: shot.id, patch: { takes } });
-  const circle = () =>
-    pending &&
+  const circle = () => {
+    if (!pending) return;
     setTakes((shot.takes ?? []).map((t) =>
       t.id === pending.id ? { ...t, circled: true, rejected: false } : { ...t, circled: false },
     ));
+    harvestCircledTake(project, shot, pending, dispatch);
+  };
   const toss = () =>
     pending &&
     setTakes((shot.takes ?? []).map((t) => (t.id === pending.id ? { ...t, rejected: true, circled: false } : t)));

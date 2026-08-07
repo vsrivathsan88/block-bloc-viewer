@@ -9,6 +9,7 @@ import type { Action } from "../store/useProject";
 import { getImageData } from "../store/useProject";
 import { autoContextIds } from "../lib/inference";
 import { impliedEndPose } from "../lib/movement";
+import { shouldKeepWaypoint } from "../lib/path";
 import { buildPrompt } from "./prompt";
 import { buildFarmArRequest, loadFarmConfig, submitFarmAr } from "./client";
 
@@ -22,13 +23,12 @@ export async function generateShot(
   const keyframe = frameById(project, shot.castFrameId) ?? cleanFrame;
   const cfg = loadFarmConfig();
 
-  // image mode: the context is exactly the keyframe. Auto-context gathers
-  // by proximity, and every image-world frame sits at the identity pose —
-  // several different images at one pose is contradictory conditioning.
-  const baseIds =
-    project.world.kind === "image" && shot.frameId
-      ? [shot.frameId]
-      : autoContextIds(project, shot);
+  const baseIds = autoContextIds(
+    project, shot, 3,
+    project.world.kind === "image" && cleanFrame
+      ? (f) => shouldKeepWaypoint(f.pose, cleanFrame.pose)
+      : undefined,
+  );
   const ids = baseIds.map((id) =>
     id === shot.frameId && shot.castFrameId ? shot.castFrameId : id,
   );

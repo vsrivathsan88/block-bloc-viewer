@@ -6,6 +6,7 @@ import type { CapturedFrame, CastMember, Shot, Take } from "../model/types";
 import { circledTake, frameById, MOVEMENTS, reviewTake, shotTakes, uid } from "../model/types";
 import { loadFarmConfig } from "../farm/client";
 import { generateShot } from "../farm/generateShot";
+import { harvestCircledTake } from "../farm/harvest";
 import { loadMarbleConfig } from "../marble/client";
 import { editImage, loadEditConfig } from "../edit/imageEdit";
 import { MOVEMENT_GLYPH, movementFamily } from "../lib/movement";
@@ -92,8 +93,10 @@ export default function FrameOverlay({ shotId, onClose }: { shotId: string; onCl
   // Circle a take (print it — the board and animatic play it); toss a take
   // (kept in history, dimmed). Only one circle per shot.
   const circle = (id: string) => {
+    const take = takes.find((t) => t.id === id);
     patch({ takes: takes.map((t) => ({ ...t, circled: t.id === id, rejected: t.id === id ? false : t.rejected })) });
     setViewTakeId(id);
+    if (take && shot) harvestCircledTake(project, shot, take, dispatch);
   };
   const toss = (id: string) => {
     patch({ takes: takes.map((t) => (t.id === id ? { ...t, rejected: true, circled: false } : t)) });
